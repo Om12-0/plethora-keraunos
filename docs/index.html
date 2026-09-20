@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plethora Keraunos — Declarative Windows System Orchestrator</title>
+  <meta name="description" content="Plethora Keraunos is a declarative, 100% offline Windows system orchestrator. Type natural language. Get a live diff. Apply silently." />
+  <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/Om12-0/plethora-keraunos/master/keraunos/ui/assets/icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg:       #090a0f;
+      --bg2:      #0d0f17;
+      --primary:  #7c3aed;
+      --primary2: #8b5cf6;
+      --cyan:     #06b6d4;
+      --cyan2:    #38bdf8;
+      --surface:  rgba(17, 24, 39, 0.75);
+      --border:   rgba(255, 255, 255, 0.08);
+      --text:     #f1f5f9;
+      --muted:    #94a3b8;
+      --font:     'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      --mono:     'JetBrains Mono', Consolas, Monaco, 'Courier New', monospace;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 16px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    /* Ambient Background Glow */
+    .ambient-glow {
+      position: fixed;
+      top: -20%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80vw;
+      height: 70vh;
+      background: radial-gradient(ellipse at center, rgba(124, 58, 237, 0.28) 0%, rgba(6, 182, 212, 0.18) 45%, rgba(9, 10, 15, 0) 75%);
+      filter: blur(80px);
+      z-index: -1;
+      pointer-events: none;
+      animation: pulseGlow 8s ease-in-out infinite alternate;
+    }
+
+    @keyframes pulseGlow {
+      0% {
+        opacity: 0.15;
+        transform: translateX(-50%) scale(0.95);
+      }
+      100% {
+        opacity: 0.35;
+        transform: translateX(-50%) scale(1.08);
+      }
+    }
+
+    /* Sticky Navigation */
+    nav.sticky-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      background: rgba(9, 10, 15, 0.85);
+      border-bottom: 1px solid var(--border);
+      height: 64px;
+      display: flex;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+
+    .nav-container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 1.12rem;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-logo {
+      height: 28px;
+      width: 28px;
+      object-fit: contain;
+      border-radius: 6px;
+    }
+
+    .version-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      background: var(--primary);
+      color: #ffffff;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      letter-spacing: 0.02em;
+      box-shadow: 0 0 10px rgba(124, 58, 237, 0.4);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .nav-link {
+      font-size: 0.92rem;
+      font-weight: 500;
+      color: var(--muted);
+      transition: color 0.2s ease;
+    }
+
+    .nav-link:hover {
+      color: #ffffff;
+    }
+
+    .btn-nav-download {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--cyan) 100%);
+      color: #ffffff;
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+      box-shadow: 0 2px 10px rgba(124, 58, 237, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .btn-nav-download:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.1);
+      box-shadow: 0 4px 18px rgba(6, 182, 212, 0.35);
+    }
+
+    /* Layout Sections */
+    section {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 96px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .section-title {
+      font-size: 2.25rem;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: -0.03em;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #ffffff 30%, var(--cyan2) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .section-subtitle {
+      font-size: 1.05rem;
+      color: var(--muted);
+      text-align: center;
+      max-width: 640px;
+      margin-bottom: 48px;
+    }
+
+    /* Scroll Reveal Animation */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* HERO SECTION */
+    .hero-section {
+      padding-top: 100px;
+      padding-bottom: 80px;
+      text-align: center;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      background: rgba(17, 24, 39, 0.85);
+      border: 1px solid var(--border);
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 28px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+      animation: pulseDot 2s infinite ease-in-out;
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.25); opacity: 0.75; }
+    }
+
+    .hero-headline {
+      font-size: 4rem;
+      line-height: 1.1;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin-bottom: 24px;
+      max-width: 900px;
+      background: linear-gradient(135deg, #ffffff 20%, var(--primary2) 65%, var(--cyan) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-subheadline {
+      font-size: 1.2rem;
+      color: var(--muted);
+      max-width: 720px;
+      line-height: 1.65;
+      margin-bottom: 36px;
+    }
+
+    .hero-cta-group {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary) 0%, #6d28d9 100%);
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 1rem;
+      padding: 14px 28px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 4px 20px rgba(124, 58, 237, 0.35);
+      transition: all 0.25s ease;
+      cursor: pointer;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(124, 58, 237, 0.55);
+      filter: brightness(1.1);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.04);
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 1rem;
+      padding: 14px 28px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      transition: all 0.25s ease;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .hero-tagline {
+      font-size: 0.8rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+
+    /* INTERACTIVE LIVE SIMULATOR */
+    .simulator-section {
+      width: 100%;
+    }
+
+    .pill-tabs {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .pill-tab {
+      background: rgba(17, 24, 39, 0.6);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.88rem;
+      font-family: var(--mono);
+      padding: 8px 18px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .pill-tab:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .pill-tab.active {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary2);
+      box-shadow: 0 0 16px rgba(124, 58, 237, 0.45);
+    }
+
+    .mock-window {
+      width: 100%;
+      max-width: 860px;
+      background: var(--surface);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .window-chrome {
+      background: rgba(13, 15, 23, 0.9);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      position: relative;
+    }
+
+    .window-dots {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+
+    .dot.red { background: #ef4444; }
+    .dot.yellow { background: #eab308; }
+    .dot.green { background: #22c55e; }
+
+    .window-title {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+
+    .window-body {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .input-bar {
+      background: rgba(9, 10, 15, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .input-prompt-icon {
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 1.1rem;
+    }
+
+    .typewriter-text {
+      font-family: var(--mono);
+      font-size: 0.92rem;
+      color: #e2e8f0;
+      flex-grow: 1;
+      white-space: pre;
+      overflow: hidden;
+    }
+
+    .cursor-blink {
+      display: inline-block;
+      width: 2px;
+      height: 1.1em;
+      background: var(--cyan);
+      vertical-align: middle;
+      margin-left: 2px;
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    .diff-cards-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      min-height: 140px;
+    }
+
+    .diff-cards-container.single-col {
+      grid-template-columns: 1fr;
+    }
+
+    .diff-card {
+      background: rgba(17, 24, 39, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: all 0.3s ease;
+    }
+
+    .diff-category {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .diff-items {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .diff-line {
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      color: #4ade80;
+      line-height: 1.4;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      word-break: break-all;
+    }
+
+    .diff-line-plus {
+      font-weight: 700;
+      color: #22c55e;
+      user-select: none;
+    }
+
+    .apply-bar-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 4px;
+    }
+
+    .btn-apply {
+      align-self: flex-start;
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary2) 100%);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 10px 22px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 14px rgba(124, 58, 237, 0.3);
+    }
+
+    .btn-apply:hover:not(:disabled) {
+      filter: brightness(1.15);
+      transform: translateY(-1px);
+    }
+
+    .btn-apply:disabled {
+      cursor: not-allowed;
+      opacity: 0.9;
+    }
+
+    .progress-container {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 9999px;
+      overflow: hidden;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .progress-container.active {
+      opacity: 1;
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary) 0%, var(--cyan) 100%);
+      border-radius: 9999px;
+      transition: width 1.2s cubic-bezier(0.1, 0.7, 0.1, 1);
+    }
+
+    /* ARCHITECTURE GRID */
+    .arch-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      width: 100%;
+    }
+
+    .arch-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .arch-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(124, 58, 237, 0.4);
+      box-shadow: 0 0 24px rgba(124, 58, 237, 0.25);
+    }
+
+    .arch-icon {
+      font-size: 2rem;
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(124, 58, 237, 0.15);
+      border-radius: 12px;
+      border: 1px solid rgba(124, 58, 237, 0.3);
+    }
+
+    .arch-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+    }
+
+    .arch-desc {
+      font-size: 0.92rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* COMPARISON MATRIX */
+    .table-container {
+      width: 100%;
+      max-width: 900px;
+      overflow-x: auto;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+
+    .comp-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.95rem;
+    }
+
+    .comp-table th, .comp-table td {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .comp-table th {
+      background: rgba(13, 15, 23, 0.9);
+      font-weight: 600;
+      color: #ffffff;
+      font-size: 0.92rem;
+    }
+
+    .comp-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .comp-col-keraunos {
+      background: rgba(124, 58, 237, 0.08);
+      border-left: 1px solid rgba(124, 58, 237, 0.2);
+      border-right: 1px solid rgba(124, 58, 237, 0.2);
+      font-weight: 600;
+    }
+
+    th.comp-col-keraunos {
+      color: var(--cyan2);
+      background: rgba(124, 58, 237, 0.15);
+    }
+
+    .badge-check {
+      color: #4ade80;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge-cross {
+      color: #f87171;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* INSTALLATION TABS */
+    .install-wrapper {
+      width: 100%;
+      max-width: 760px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .install-tab-header {
+      display: flex;
+      gap: 8px;
+      background: rgba(17, 24, 39, 0.6);
+      padding: 6px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      width: fit-content;
+    }
+
+    .install-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 8px 20px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .install-tab-btn.active {
+      background: var(--primary);
+      color: #ffffff;
+      box-shadow: 0 2px 10px rgba(124, 58, 237, 0.35);
+    }
+
+    .code-block-card {
+      position: relative;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    }
+
+    .btn-copy {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-copy:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+    }
+
+    .code-pre {
+      font-family: var(--mono);
+      font-size: 0.88rem;
+      line-height: 1.65;
+      overflow-x: auto;
+      padding-right: 60px;
+    }
+
+    .code-comment {
+      color: #6a737d;
+      user-select: none;
+    }
+
+    .code-cmd {
+      color: #e6edf3;
+    }
+
+    .install-note {
+      font-size: 0.82rem;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    /* FOOTER */
+    footer.page-footer {
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      margin-top: auto;
+      padding: 48px 24px 28px;
+    }
+
+    .footer-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    .footer-main {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1rem;
+    }
+
+    .footer-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .footer-links a:hover {
+      color: #ffffff;
+    }
+
+    .footer-license {
+      font-size: 0.85rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .footer-bottom {
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      padding-top: 24px;
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    /* RESPONSIVE DESIGN */
+    @media (max-width: 768px) {
+      .nav-links a.nav-link {
+        display: none;
+      }
+
+      .hero-headline {
+        font-size: 2.5rem;
+      }
+
+      .hero-subheadline {
+        font-size: 1rem;
+      }
+
+      .diff-cards-container {
+        grid-template-columns: 1fr;
+      }
+
+      .arch-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .footer-main {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
+
+      .footer-links {
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient background glow -->
+  <div class="ambient-glow"></div>
+
+  <!-- 1. STICKY NAV -->
+  <nav class="sticky-nav">
+    <div class="nav-container">
+      <a href="#" class="brand-group">
+        <img class="brand-logo" src="https://raw.githubusercontent.com/Om12-0/plethora-keraunos/master/keraunos/ui/assets/icon.png" alt="Keraunos" />
+        <span>Plethora Keraunos</span>
+        <span class="version-badge">v1.0.2</span>
+      </a>
+      <div class="nav-links">
+        <a href="#architecture" class="nav-link">Docs</a>
+        <a href="https://github.com/Om12-0/plethora-keraunos" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
+        <a href="https://github.com/Om12-0/plethora-keraunos/releases/latest" target="_blank" rel="noopener noreferrer" class="btn-nav-download">
+          <span>⬇</span> Download v1.0.2
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- 2. HERO SECTION -->
+  <section class="hero-section">
+    <div class="status-pill reveal">
+      <span class="status-dot"></span>
+      <span>Stable Release · v1.0.2 · Windows 10/11</span>
+    </div>
+
+    <h1 class="hero-headline reveal">
+      Declare it. Apply it. Done.
+    </h1>
+
+    <p class="hero-subheadline reveal">
+      Plethora Keraunos is a declarative, 100% offline Windows system orchestrator. Type natural language. Get a live diff. Apply silently — no CMD window, no cloud, no keys.
+    </p>
+
+    <div class="hero-cta-group reveal">
+      <a href="https://github.com/Om12-0/plethora-keraunos/releases/latest" target="_blank" rel="noopener noreferrer" class="btn-primary">
+        <span>⬇</span> Download Installer
+      </a>
+      <a href="https://github.com/Om12-0/plethora-keraunos" target="_blank" rel="noopener noreferrer" class="btn-secondary">
+        View on GitHub <span>→</span>
+      </a>
+    </div>
+
+    <p class="hero-tagline reveal">
+      Free · Open Source · Air-Gapped · MIT License · Win32 Native · ~300 MB installer
+    </p>
+  </section>
+
+  <!-- 3. INTERACTIVE LIVE SIMULATOR -->
+  <section class="simulator-section">
+    <h2 class="section-title reveal">See it in action</h2>
+    <p class="section-subtitle reveal">Interact with the engine diff preview below.</p>
+
+    <div class="pill-tabs reveal">
+      <button class="pill-tab active" data-index="0">chrome · lightshot · dark mode</button>
+      <button class="pill-tab" data-index="1">primary screen → screen 2</button>
+      <button class="pill-tab" data-index="2">vscode · git · performance</button>
+    </div>
+
+    <div class="mock-window reveal">
+      <!-- Window Chrome -->
+      <div class="window-chrome">
+        <div class="window-dots">
+          <div class="dot red"></div>
+          <div class="dot yellow"></div>
+          <div class="dot green"></div>
+        </div>
+        <div class="window-title">Keraunos — Orchestrator</div>
+      </div>
+
+      <!-- Window Body -->
+      <div class="window-body">
+        <div class="input-bar">
+          <span class="input-prompt-icon">&gt;</span>
+          <div class="typewriter-text" id="simulator-prompt">
+            <span id="typewriter-content"></span><span class="cursor-blink"></span>
+          </div>
+        </div>
+
+        <div class="diff-cards-container" id="diff-cards-wrapper">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="apply-bar-wrapper">
+          <button class="btn-apply" id="btn-apply-changes">
+            <span id="apply-icon">⚡</span>
+            <span id="apply-text">Apply Changes</span>
+          </button>
+          <div class="progress-container" id="apply-progress-container">
+            <div class="progress-bar" id="apply-progress-bar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. ARCHITECTURE GRID -->
+  <section id="architecture">
+    <h2 class="section-title reveal">Built different</h2>
+    <p class="section-subtitle reveal">Three precision layers working in concert.</p>
+
+    <div class="arch-grid">
+      <!-- Layer 1 -->
+      <div class="arch-card reveal">
+        <div class="arch-icon">⚙</div>
+        <h3 class="arch-title">Win32 Engine</h3>
+        <p class="arch-desc">
+          Direct Win32 API calls via ctypes. Zero subprocess overhead for display, audio, and registry ops. CREATE_NO_WINDOW everywhere.
+        </p>
+      </div>
+
+      <!-- Layer 2 -->
+      <div class="arch-card reveal">
+        <div class="arch-icon">🧠</div>
+        <h3 class="arch-title">Dual-Tier Compiler</h3>
+        <p class="arch-desc">
+          Tier 1: Sub-millisecond RapidFuzz catalog resolution. Tier 2: SmolLM2-135M offline SLM for complex natural language → strict JSON schema output.
+        </p>
+      </div>
+
+      <!-- Layer 3 -->
+      <div class="arch-card reveal">
+        <div class="arch-icon">🔒</div>
+        <h3 class="arch-title">Silent Execution + Auto-Update</h3>
+        <p class="arch-desc">
+          All package ops (WinGet · Chocolatey · Scoop) run invisibly. In-app updater checks GitHub Releases and self-installs — zero popup.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. COMPARISON MATRIX -->
+  <section>
+    <h2 class="section-title reveal">Why Keraunos?</h2>
+    <p class="section-subtitle reveal">Engineered from ground zero for silent, declarative precision.</p>
+
+    <div class="table-container reveal">
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th class="comp-col-keraunos">Keraunos ✓</th>
+            <th>Traditional ✗</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Offline / Air-gapped</strong></td>
+            <td class="comp-col-keraunos"><span class="badge-check">✅ 100%</span></td>
+            <td><span class="badge-cross">❌ Cloud API</span></td>
+          </tr>
+          <tr>
+            <td><strong>CMD Popup on Apply</strong></td>
+            <td class="comp-col-keraunos"><span class="badge-check">✅ Never</span></td>
+            <td><span class="badge-cross">❌ Always</span></td>
+          </tr>
+          <tr>
+            <td><strong>Natural Language Input</strong></td>
+            <td class="comp-col-keraunos"><span class="badge-check">✅ Dual-tier SLM</span></td>
+            <td><span class="badge-cross">❌ None</span></td>
+          </tr>
+          <tr>
+            <td><strong>Live Declarative Diff</strong></td>
+            <td class="comp-col-keraunos"><span class="badge-check">✅ Before every apply</span></td>
+            <td><span class="badge-cross">❌ Blind execution</span></td>
+          </tr>
+          <tr>
+            <td><strong>Auto-Updater</strong></td>
+            <td class="comp-col-keraunos"><span class="badge-check">✅ In-app silent</span></td>
+            <td><span class="badge-cross">❌ Manual download</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 6. INSTALLATION TABS -->
+  <section>
+    <h2 class="section-title reveal">Get started in seconds</h2>
+    <p class="section-subtitle reveal">Choose your preferred installation method.</p>
+
+    <div class="install-wrapper reveal">
+      <div class="install-tab-header">
+        <button class="install-tab-btn active" id="tab-btn-installer">Installer</button>
+        <button class="install-tab-btn" id="tab-btn-source">Source</button>
+      </div>
+
+      <!-- Installer code block -->
+      <div class="code-block-card" id="code-card-installer">
+        <button class="btn-copy" onclick="copyCode('code-installer-text', this)">
+          📋 Copy
+        </button>
+        <pre class="code-pre"><code id="code-installer-text"><span class="code-comment"># Download from GitHub Releases</span>
+<span class="code-cmd">Plethora-Keraunos-Setup-1.0.2.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART</span></code></pre>
+      </div>
+
+      <!-- Source code block -->
+      <div class="code-block-card" id="code-card-source" style="display: none;">
+        <button class="btn-copy" onclick="copyCode('code-source-text', this)">
+          📋 Copy
+        </button>
+        <pre class="code-pre"><code id="code-source-text"><span class="code-cmd">git clone https://github.com/Om12-0/plethora-keraunos.git</span>
+<span class="code-cmd">cd plethora-keraunos</span>
+<span class="code-cmd">pip install -r requirements.txt</span>
+<span class="code-cmd">python -m keraunos</span></code></pre>
+      </div>
+
+      <p class="install-note" id="install-note-text">
+        ~300 MB · Windows 10/11 · No admin required for user-mode features
+      </p>
+    </div>
+  </section>
+
+  <!-- 7. FOOTER -->
+  <footer class="page-footer">
+    <div class="footer-container">
+      <div class="footer-main">
+        <div class="footer-left">
+          <img class="brand-logo" src="https://raw.githubusercontent.com/Om12-0/plethora-keraunos/master/keraunos/ui/assets/icon.png" alt="Keraunos" />
+          <span>Plethora Keraunos v1.0.2</span>
+        </div>
+        <div class="footer-links">
+          <a href="https://github.com/Om12-0/plethora-keraunos" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://github.com/Om12-0/plethora-keraunos/releases" target="_blank" rel="noopener noreferrer">Releases</a>
+          <a href="https://github.com/Om12-0/plethora-keraunos/issues" target="_blank" rel="noopener noreferrer">Issues</a>
+        </div>
+        <div class="footer-license">
+          MIT License
+        </div>
+      </div>
+      <div class="footer-bottom">
+        Architected by Plethora AI. 100% air-gapped, zero cloud, open source.
+      </div>
+    </div>
+  </footer>
+
+  <!-- Vanilla JS Interaction Logic -->
+  <script>
+    // Simulator Data Specs
+    const SIMULATOR_TABS = [
+      {
+        prompt: "install chrome and lightshot, then switch to dark mode",
+        singleCol: false,
+        cards: [
+          {
+            category: "Applications",
+            items: [
+              "+ Google.Chrome (winget)",
+              "+ Skillbrains.Lightshot (winget)"
+            ]
+          },
+          {
+            category: "Personalization",
+            items: [
+              "+ dark_mode → enabled"
+            ]
+          }
+        ]
+      },
+      {
+        prompt: "make my second monitor the primary display",
+        singleCol: true,
+        cards: [
+          {
+            category: "Hardware",
+            items: [
+              "+ primary_display → screen_2 (Win32 SetDisplayConfig)"
+            ]
+          }
+        ]
+      },
+      {
+        prompt: "setup visual studio code, git, and optimize system for performance",
+        singleCol: false,
+        cards: [
+          {
+            category: "Applications",
+            items: [
+              "+ Microsoft.VisualStudioCode",
+              "+ Git.Git"
+            ]
+          },
+          {
+            category: "System",
+            items: [
+              "+ cpu_priority → high",
+              "+ page_file → auto"
+            ]
+          }
+        ]
+      }
+    ];
+
+    let currentTabIndex = 0;
+    let typewriterTimer = null;
+
+    function renderDiffCards(tabIndex) {
+      const wrapper = document.getElementById("diff-cards-wrapper");
+      const tabData = SIMULATOR_TABS[tabIndex];
+
+      if (tabData.singleCol) {
+        wrapper.classList.add("single-col");
+      } else {
+        wrapper.classList.remove("single-col");
+      }
+
+      wrapper.innerHTML = tabData.cards.map(card => `
+        <div class="diff-card">
+          <div class="diff-category">[${card.category}]</div>
+          <div class="diff-items">
+            ${card.items.map(item => `
+              <div class="diff-line">
+                <span class="diff-line-plus">+</span>
+                <span>${item.replace(/^\+\s*/, '')}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function typewriteText(targetText, speed = 40) {
+      const container = document.getElementById("typewriter-content");
+      if (typewriterTimer) clearInterval(typewriterTimer);
+      container.textContent = "";
+      let charIndex = 0;
+
+      typewriterTimer = setInterval(() => {
+        if (charIndex < targetText.length) {
+          container.textContent += targetText.charAt(charIndex);
+          charIndex++;
+        } else {
+          clearInterval(typewriterTimer);
+        }
+      }, speed);
+    }
+
+    function selectTab(index) {
+      currentTabIndex = index;
+      const tabs = document.querySelectorAll(".pill-tab");
+      tabs.forEach((tab, i) => {
+        if (i === index) {
+          tab.classList.add("active");
+        } else {
+          tab.classList.remove("active");
+        }
+      });
+
+      const tabData = SIMULATOR_TABS[index];
+      typewriteText(tabData.prompt);
+      renderDiffCards(index);
+    }
+
+    // Pill tab click bindings
+    document.querySelectorAll(".pill-tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        const index = parseInt(tab.getAttribute("data-index"), 10);
+        selectTab(index);
+      });
+    });
+
+    // Apply Changes Animation Logic
+    const applyBtn = document.getElementById("btn-apply-changes");
+    const applyText = document.getElementById("apply-text");
+    const applyIcon = document.getElementById("apply-icon");
+    const progressBar = document.getElementById("apply-progress-bar");
+    const progressContainer = document.getElementById("apply-progress-container");
+
+    applyBtn.addEventListener("click", () => {
+      if (applyBtn.disabled) return;
+
+      applyBtn.disabled = true;
+      applyText.textContent = "Applying...";
+      applyIcon.textContent = "⚙";
+      progressContainer.classList.add("active");
+      progressBar.style.width = "0%";
+
+      // Animate progress bar to 100% over 1.2s
+      setTimeout(() => {
+        progressBar.style.width = "100%";
+      }, 50);
+
+      setTimeout(() => {
+        applyIcon.textContent = "✓";
+        applyText.textContent = "Done (0ms terminal popup)";
+        applyBtn.style.background = "rgba(34, 197, 94, 0.25)";
+        applyBtn.style.borderColor = "#22c55e";
+        applyBtn.style.color = "#4ade80";
+
+        setTimeout(() => {
+          // Reset button & progress
+          applyBtn.disabled = false;
+          applyIcon.textContent = "⚡";
+          applyText.textContent = "Apply Changes";
+          applyBtn.style.background = "";
+          applyBtn.style.borderColor = "";
+          applyBtn.style.color = "";
+          progressBar.style.width = "0%";
+          progressContainer.classList.remove("active");
+        }, 2000);
+      }, 1250);
+    });
+
+    // Installation Tabs Logic
+    const tabBtnInstaller = document.getElementById("tab-btn-installer");
+    const tabBtnSource = document.getElementById("tab-btn-source");
+    const cardInstaller = document.getElementById("code-card-installer");
+    const cardSource = document.getElementById("code-card-source");
+    const installNote = document.getElementById("install-note-text");
+
+    tabBtnInstaller.addEventListener("click", () => {
+      tabBtnInstaller.classList.add("active");
+      tabBtnSource.classList.remove("active");
+      cardInstaller.style.display = "block";
+      cardSource.style.display = "none";
+      installNote.textContent = "~300 MB · Windows 10/11 · No admin required for user-mode features";
+    });
+
+    tabBtnSource.addEventListener("click", () => {
+      tabBtnSource.classList.add("active");
+      tabBtnInstaller.classList.remove("active");
+      cardInstaller.style.display = "none";
+      cardSource.style.display = "block";
+      installNote.textContent = "Requires Python 3.10+ · Git for Windows · Microsoft C++ Build Tools";
+    });
+
+    // Clipboard Copy Helper
+    function copyCode(elementId, btnElement) {
+      const codeElement = document.getElementById(elementId);
+      const textToCopy = codeElement.innerText;
+
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        const originalText = btnElement.innerHTML;
+        btnElement.innerHTML = "✓ Copied!";
+        btnElement.style.color = "#4ade80";
+        setTimeout(() => {
+          btnElement.innerHTML = originalText;
+          btnElement.style.color = "";
+        }, 1500);
+      }).catch(err => {
+        console.error("Failed to copy code: ", err);
+      });
+    }
+
+    // Scroll Reveal Observer
+    const revealElements = document.querySelectorAll(".reveal");
+    const revealObserver = new IntersectionObserver((entries, observer) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("visible");
+          observer.unobserve(entry.target);
+        }
+      });
+    }, {
+      rootMargin: "0px 0px -60px 0px",
+      threshold: 0.1
+    });
+
+    revealElements.forEach(el => revealObserver.observe(el));
+
+    // Initialize Simulator on Load
+    window.addEventListener("DOMContentLoaded", () => {
+      selectTab(0);
+    });
+  </script>
+</body>
+</html>
