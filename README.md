@@ -14,6 +14,11 @@
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4.svg?style=flat-square" alt="Platform Windows">
   <img src="https://img.shields.io/badge/AI-100%25%20Offline%20(SmolLM2)-10B981.svg?style=flat-square" alt="100% Offline AI">
   <img src="https://img.shields.io/badge/execution-Silent%20Zero--CMD-purple.svg?style=flat-square" alt="Silent Execution">
+  <a href="https://discord.com/users/thawl3ss"><img src="https://img.shields.io/badge/Discord-thawl3ss-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord thawl3ss"></a>
+</p>
+
+<p align="center">
+  <strong>Maintained & Architected by <a href="https://github.com/Om12-0">@Om12-0</a></strong> • <em>Discord: <code>thawl3ss</code></em>
 </p>
 
 ---
