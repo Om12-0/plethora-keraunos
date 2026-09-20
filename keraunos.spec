@@ -31,6 +31,7 @@ a = Analysis(
         'keraunos.schema',
         'keraunos.slm',
         'keraunos.tools',
+        'keraunos.updater',
         'keraunos.ui',
         'keraunos.ui.app',
         'keraunos.ui.styles',

@@ -112,6 +112,17 @@ _SYSTEM_UPDATE_ALL_RE = re.compile(
     re.IGNORECASE,
 )
 
+_APP_UPDATE_RE = re.compile(
+    r"\b(?:"
+    r"check\s+(?:for\s+)?(?:app\s+)?updates|"
+    r"update\s+(?:plethora\s+)?keraunos|"
+    r"upgrade\s+(?:plethora\s+)?keraunos|"
+    r"update\s+this\s+app|"
+    r"app\s+update"
+    r")\b",
+    re.IGNORECASE,
+)
+
 
 @dataclass
 class ResolutionDiagnostic:
@@ -385,6 +396,19 @@ class OfflineIntentCompiler:
                     ResolutionDiagnostic(
                         original_token=clause,
                         resolved_target="all_packages",
+                        target_type="action",
+                        confidence=100.0,
+                        action="update",
+                        applied=True,
+                    )
+                )
+                continue
+
+            if _APP_UPDATE_RE.search(lower):
+                diagnostics.append(
+                    ResolutionDiagnostic(
+                        original_token=clause,
+                        resolved_target="check_app_updates",
                         target_type="action",
                         confidence=100.0,
                         action="update",

@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import Qt, QSize, QThread, Signal
+from PySide6.QtCore import Qt, QSize, QThread, QTimer, Signal
 from PySide6.QtGui import (
     QColor, QPainter, QPainterPath, QPixmap, QIcon,
 )
@@ -95,6 +95,7 @@ _SETTINGS_DEFAULTS: Dict[str, Any] = {
     "auto_push": False,
     "start_with_windows": False,
     "typo_threshold": 75,
+    "auto_check_updates": True,
 }
 
 
@@ -286,6 +287,10 @@ class KeraunosWindow(QMainWindow):
         # Background pre-warm SLM to avoid cold-start latency
         self._prewarm_thread = _Worker(self._prewarm_slm)
         self._prewarm_thread.start()
+
+        # Startup auto-update check
+        if self.settings.get("auto_check_updates", True):
+            QTimer.singleShot(2500, lambda: self._on_check_updates_clicked(silent=True))
 
     @staticmethod
     def _prewarm_slm():
@@ -760,14 +765,40 @@ class KeraunosWindow(QMainWindow):
         self._threshold_slider.setTickInterval(5)
         self._threshold_slider.valueChanged.connect(self._on_threshold_changed)
         sl_lay.addWidget(self._threshold_slider)
-        g4_lay.addWidget(slider_row)
-
         vlay.addWidget(g4)
+
+        # -- Group 5: Updates & Version --
+        g5 = self._settings_card()
+        g5_lay = g5.layout()
+        g5_lay.addWidget(self._settings_group_label("App Updates & Version"))
+
+        update_top = QHBoxLayout()
+        from keraunos.config import APP_VERSION
+        self._version_lbl = QLabel(f"Plethora Keraunos v{APP_VERSION}", objectName="SettingLabel")
+        self._update_status_lbl = QLabel("Up to date", objectName="SliderValue")
+        self._update_status_lbl.setStyleSheet("color: #A78BFA; font-weight: 600;")
+        update_top.addWidget(self._version_lbl)
+        update_top.addStretch(1)
+        update_top.addWidget(self._update_status_lbl)
+        g5_lay.addLayout(update_top)
+
+        self._add_checkbox(g5_lay, "Automatically check for updates on startup", key="auto_check_updates")
+
+        self._check_update_btn = QPushButton("Check for Updates")
+        self._check_update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._check_update_btn.setStyleSheet(
+            "background: #252033; color: #EDE9FE; border: 1px solid #3F3356; border-radius: 6px; padding: 6px 14px; font-weight: 500;"
+        )
+        self._check_update_btn.clicked.connect(lambda: self._on_check_updates_clicked(silent=False))
+        g5_lay.addWidget(self._check_update_btn)
+
+        vlay.addWidget(g5)
         vlay.addStretch(1)
 
         scroll.setWidget(content)
         outer.addWidget(scroll, 1)
         return page
+
 
     # ── Settings builder helpers ───────────────────────────────────────────
 
@@ -870,6 +901,98 @@ class KeraunosWindow(QMainWindow):
     def _on_threshold_changed(self, value: int) -> None:
         self._threshold_lbl.setText(f"{value}%")
         self.settings.set("typo_threshold", value)
+
+    def _on_check_updates_clicked(self, silent: bool = False) -> None:
+        if hasattr(self, "_check_update_btn"):
+            self._check_update_btn.setEnabled(False)
+            self._check_update_btn.setText("Checking for updates...")
+        if hasattr(self, "_update_status_lbl"):
+            self._update_status_lbl.setText("Checking...")
+
+        def _do_check():
+            from keraunos.updater import check_for_updates
+            return check_for_updates()
+
+        def _ok(info: object):
+            if hasattr(self, "_check_update_btn"):
+                self._check_update_btn.setEnabled(True)
+                self._check_update_btn.setText("Check for Updates")
+            if not isinstance(info, dict):
+                if hasattr(self, "_update_status_lbl"):
+                    self._update_status_lbl.setText("Check failed")
+                if not silent:
+                    QMessageBox.warning(self, "Update Check", "Unable to connect to update server.")
+                return
+
+            if info.get("has_update"):
+                latest = info.get("latest_version")
+                download_url = info.get("download_url")
+                asset_name = info.get("asset_name")
+                if hasattr(self, "_update_status_lbl"):
+                    self._update_status_lbl.setText(f"Update Available: v{latest}")
+                    self._update_status_lbl.setStyleSheet("color: #FBBF24; font-weight: 600;")
+
+                reply = QMessageBox.question(
+                    self,
+                    "Update Available",
+                    f"A new version of Plethora Keraunos (v{latest}) is available!\n\n"
+                    f"Release Notes:\n{info.get('release_notes', '')[:300]}\n\n"
+                    f"Would you like to download and install this update now?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply == QMessageBox.StandardButton.Yes and download_url:
+                    self._start_download_and_install(download_url, asset_name)
+            else:
+                from keraunos.config import APP_VERSION
+                if hasattr(self, "_update_status_lbl"):
+                    self._update_status_lbl.setText(f"v{APP_VERSION} (Latest)")
+                    self._update_status_lbl.setStyleSheet("color: #10B981; font-weight: 600;")
+                if not silent:
+                    QMessageBox.information(
+                        self,
+                        "Up to Date",
+                        f"Plethora Keraunos is up to date (v{APP_VERSION}).",
+                    )
+
+        def _err(e: str):
+            if hasattr(self, "_check_update_btn"):
+                self._check_update_btn.setEnabled(True)
+                self._check_update_btn.setText("Check for Updates")
+            if hasattr(self, "_update_status_lbl"):
+                self._update_status_lbl.setText("Check failed")
+            if not silent:
+                QMessageBox.warning(self, "Update Check", f"Update check failed: {e}")
+
+        self._run_bg(_do_check, _ok, _err)
+
+    def _start_download_and_install(self, download_url: str, asset_name: str) -> None:
+        if hasattr(self, "_check_update_btn"):
+            self._check_update_btn.setEnabled(False)
+            self._check_update_btn.setText("Downloading update...")
+        if hasattr(self, "_update_status_lbl"):
+            self._update_status_lbl.setText("Downloading...")
+
+        def _do_download():
+            from keraunos.updater import download_update
+            return download_update(download_url, asset_name)
+
+        def _ok(dest_path: object):
+            if hasattr(self, "_check_update_btn"):
+                self._check_update_btn.setText("Installing...")
+            if hasattr(self, "_update_status_lbl"):
+                self._update_status_lbl.setText("Installing...")
+            from keraunos.updater import launch_installer_and_exit
+            launch_installer_and_exit(str(dest_path), silent=False)
+
+        def _err(e: str):
+            if hasattr(self, "_check_update_btn"):
+                self._check_update_btn.setEnabled(True)
+                self._check_update_btn.setText("Check for Updates")
+            if hasattr(self, "_update_status_lbl"):
+                self._update_status_lbl.setText("Download failed")
+            QMessageBox.critical(self, "Download Failed", f"Failed to download update:\n{e}")
+
+        self._run_bg(_do_download, _ok, _err)
 
     # ── Navigation shortcuts ───────────────────────────────────────────────
 
@@ -1113,6 +1236,23 @@ class KeraunosWindow(QMainWindow):
                     f'<div style="color: #E4E4E7;">Sync configuration evolution to remote Git origin</div>'
                     f'</div>'
                 )
+
+            # App update action
+            app_update_actions = [d for d in diagnostics if d.resolved_target == "check_app_updates"]
+            if app_update_actions:
+                has_action_cards = True
+                cards_html.append(
+                    f'<div style="background: #14121E; border: 1px solid #3F3356; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px;">'
+                    f'<div style="font-weight: 600; color: #A78BFA; font-size: 14px; margin-bottom: 4px;">'
+                    f'🔄 Plethora Keraunos Update Check'
+                    f'</div>'
+                    f'<div style="color: #9E9EAA; font-size: 12px; line-height: 1.5;">'
+                    f'Checking GitHub repository for newer version releases and installer packages.'
+                    f'</div>'
+                    f'</div>'
+                )
+                QTimer.singleShot(400, lambda: self._on_check_updates_clicked(silent=False))
+
 
             # Resolution diagnostics / suggestions
             if diagnostics:
