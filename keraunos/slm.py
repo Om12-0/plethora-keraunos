@@ -1,80 +1,69 @@
 """
-keraunos/slm.py - Local Embedded Small Language Model (Qwen2.5-0.5B).
-Extracts declarative Windows actions from human speech offline with strict JSON schema.
-Zero network calls, zero API keys. Fully air-gapped.
+keraunos/slm.py - Ultra-lightweight offline SLM parser (~85 MB SmolLM2-135M).
+Extracts Windows setup and package intents into strict JSON offline.
 """
 
 import json
 import os
 import sys
 from typing import Any, Dict, Optional
+from llama_cpp import Llama
 
-_LLM_INSTANCE = None
+_SLM_INSTANCE: Optional[Llama] = None
 
-SYSTEM_PROMPT = """\
-You are Keraunos SLM, an offline Windows system configuration intent extractor.
-Given a user request, extract intended software installs/uninstalls/updates, and Windows system personalization tweaks.
-You must output ONLY valid JSON matching this schema:
-{
-  "packages": [
-    {"name": "string", "action": "install" | "remove" | "update"}
-  ],
-  "presets": [
-    {"key": "dark_mode" | "light_mode" | "hide_taskbar_search" | "show_taskbar_search" | "disable_bing_in_start_search" | "enable_bing_in_start_search" | "show_file_extensions" | "hide_file_extensions" | "compact_explorer_view" | "enable_long_paths" | "disable_game_bar", "value": true | false}
-  ],
-  "meta_action": null | "update_all" | "git_sync"
-}
-If the user is just saying hello or asking for help, output empty arrays and meta_action null.
-Do NOT invent packages or keys not listed above. Output JSON only. No explanations."""
+SYSTEM_PRE_PROMPT = """You are Keraunos SLM. Extract Windows software and settings into JSON format with keys: packages, presets, meta_action."""
+
+FEW_SHOT_USER = "install chrome and dark mode"
+FEW_SHOT_ASSISTANT = '{"packages": [{"name": "chrome", "action": "install"}], "presets": [{"key": "dark_mode", "value": true}], "meta_action": null}'
 
 
 def get_model_path() -> str:
-    """Resolve GGUF model path for both frozen (PyInstaller) and dev environments."""
-    base_dir = getattr(sys, "_MEIPASS", None)
-    if base_dir:
-        # Running from PyInstaller bundle
-        model_path = os.path.join(base_dir, "models", "qwen2.5-0.5b-instruct-q4_k_m.gguf")
-        if os.path.exists(model_path):
-            return model_path
-
-    # Dev / repo fallback
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    model_path = os.path.join(repo_root, "models", "qwen2.5-0.5b-instruct-q4_k_m.gguf")
-    if os.path.exists(model_path):
-        return model_path
-
-    # CWD fallback
-    return os.path.join(os.path.abspath("."), "models", "qwen2.5-0.5b-instruct-q4_k_m.gguf")
+    base_dir = getattr(sys, "_MEIPASS", os.path.abspath("."))
+    model_path = os.path.join(base_dir, "models", "smollm2-135m-instruct-q4_k_m.gguf")
+    if not os.path.exists(model_path):
+        model_path = os.path.join(os.path.abspath("."), "models", "smollm2-135m-instruct-q4_k_m.gguf")
+    return model_path
 
 
-def get_slm():
-    """Lazy-load singleton Llama instance. Returns None if model unavailable."""
-    global _LLM_INSTANCE
-    if _LLM_INSTANCE is not None:
-        return _LLM_INSTANCE
+def get_slm() -> Optional[Llama]:
+    global _SLM_INSTANCE
+    if _SLM_INSTANCE is None:
+        path = get_model_path()
+        if os.path.exists(path):
+            _SLM_INSTANCE = Llama(
+                model_path=path,
+                n_ctx=512,
+                n_threads=4,
+                verbose=False,
+            )
+    return _SLM_INSTANCE
 
-    path = get_model_path()
-    if not os.path.exists(path):
+
+def _safe_json_parse(content: str) -> Optional[Dict[str, Any]]:
+    if not content or not content.strip():
         return None
-
+    cleaned = content.strip()
     try:
-        from llama_cpp import Llama
-        _LLM_INSTANCE = Llama(
-            model_path=path,
-            n_ctx=1024,
-            n_threads=4,
-            verbose=False,
-        )
-        return _LLM_INSTANCE
+        res = json.loads(cleaned)
+        if isinstance(res, dict):
+            return res
     except Exception:
-        return None
+        pass
+
+    # Truncation fallback: find last valid closing brace
+    idx = cleaned.rfind("}")
+    while idx > 0:
+        candidate = cleaned[:idx+1]
+        try:
+            res = json.loads(candidate)
+            if isinstance(res, dict):
+                return res
+        except Exception:
+            idx = cleaned.rfind("}", 0, idx)
+    return None
 
 
 def extract_intent_slm(text: str) -> Optional[Dict[str, Any]]:
-    """Send natural language to the local SLM and extract structured intent JSON.
-
-    Returns None if the model is unavailable or inference fails.
-    """
     llm = get_slm()
     if not llm:
         return None
@@ -82,22 +71,23 @@ def extract_intent_slm(text: str) -> Optional[Dict[str, Any]]:
     try:
         response = llm.create_chat_completion(
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": text},
+                {"role": "system", "content": SYSTEM_PRE_PROMPT},
+                {"role": "user", "content": FEW_SHOT_USER},
+                {"role": "assistant", "content": FEW_SHOT_ASSISTANT},
+                {"role": "user", "content": text.strip()},
             ],
-            temperature=0.1,
+            temperature=0.0,
             max_tokens=256,
             response_format={"type": "json_object"},
         )
         content = response["choices"][0]["message"]["content"]
-        parsed = json.loads(content)
-
-        # Validate structure minimally
-        if not isinstance(parsed, dict):
+        parsed = _safe_json_parse(content)
+        if not parsed:
             return None
-        if "packages" not in parsed:
+
+        if "packages" not in parsed or not isinstance(parsed.get("packages"), list):
             parsed["packages"] = []
-        if "presets" not in parsed:
+        if "presets" not in parsed or not isinstance(parsed.get("presets"), list):
             parsed["presets"] = []
         if "meta_action" not in parsed:
             parsed["meta_action"] = None

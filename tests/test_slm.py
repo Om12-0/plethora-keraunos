@@ -1,5 +1,5 @@
 """
-tests/test_slm.py - Integration and smoke tests for embedded Qwen2.5 SLM Tier-2 compiler.
+tests/test_slm.py - Integration and smoke tests for embedded SmolLM2-135M SLM Tier-2 compiler.
 """
 from keraunos.compiler import OfflineIntentCompiler
 from keraunos.slm import extract_intent_slm, get_model_path, get_slm
@@ -8,7 +8,7 @@ from keraunos.slm import extract_intent_slm, get_model_path, get_slm
 def test_slm_model_file_exists():
     """Verify the GGUF model file is present in the models directory."""
     path = get_model_path()
-    assert path.endswith("qwen2.5-0.5b-instruct-q4_k_m.gguf")
+    assert path.endswith("smollm2-135m-instruct-q4_k_m.gguf")
 
 
 def test_slm_instance_lazy_loads():

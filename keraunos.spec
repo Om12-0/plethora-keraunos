@@ -14,7 +14,7 @@ a = Analysis(
     datas=[
         ('assets', 'assets'),
         ('keraunosICON.png', '.'),
-        ('models/qwen2.5-0.5b-instruct-q4_k_m.gguf', 'models'),
+        ('models/smollm2-135m-instruct-q4_k_m.gguf', 'models'),
     ],
     hiddenimports=[
         'keraunos',
