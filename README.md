@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Om12-0/plethora-keraunos/releases"><img src="https://img.shields.io/badge/version-1.0.2-8B5CF6.svg?style=flat-square" alt="Version 1.0.2"></a>
+  <a href="https://github.com/Om12-0/plethora-keraunos/releases"><img src="https://img.shields.io/badge/version-1.0.3-8B5CF6.svg?style=flat-square" alt="Version 1.0.3"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License MIT"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4.svg?style=flat-square" alt="Platform Windows">
   <img src="https://img.shields.io/badge/AI-100%25%20Offline%20(SmolLM2)-10B981.svg?style=flat-square" alt="100% Offline AI">
