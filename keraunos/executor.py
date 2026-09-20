@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import subprocess
+import sys
 from typing import Any, Callable, Dict, List, Optional
 
 import yaml
@@ -16,6 +18,9 @@ StatusCallback = Callable[[str], None]
 
 # Registry paths containing these substrings need an Explorer restart to visibly apply.
 _EXPLORER_SENSITIVE = ("Explorer", "Taskbar", "Search", "StartMenu", "Desktop", "Shell")
+
+
+CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
 def _is_hklm(path: str) -> bool:
@@ -79,6 +84,7 @@ class ExecutionEngine:
             "system_tweaks": system_tweaks,
             "custom_registry": new_reg,
             "dotfiles": desired.dotfiles.model_dump(),
+            "custom_actions": list(getattr(desired, "custom_actions", [])),
         }
 
     def render_diff_text(self, diff: Dict[str, Any]) -> str:
@@ -95,6 +101,9 @@ class ExecutionEngine:
             lines.append(f"~ system.{key} = {val}")
         for reg in diff.get("custom_registry", []):
             lines.append(f"~ registry {reg['path']}\\{reg['name']} = {reg['value']} ({reg['type']})")
+        for act in diff.get("custom_actions", []):
+            if act.get("type") == "set_primary_monitor":
+                lines.append(f"~ hardware.display.primary = Display {act.get('index', 1)}")
         if diff.get("dotfiles", {}).get("powershell_profile"):
             lines.append("~ dotfiles.powershell_profile updated")
         if diff.get("dotfiles", {}).get("terminal_theme"):
@@ -178,6 +187,14 @@ class ExecutionEngine:
             except Exception as exc:
                 failed.append(f"{label} :: {exc}")
                 raise
+
+        # 0. Custom actions (e.g. Hardware display)
+        for act in getattr(desired, "custom_actions", []):
+            if act.get("type") == "set_primary_monitor":
+                from keraunos.display import set_primary_monitor
+                idx = act.get("index", 1)
+                _step(f"[Display] Setting primary monitor to Display {idx}...",
+                      lambda m=idx: set_primary_monitor(m))
 
         # 1. WinGet installs
         for pkg_id in diff["winget_add"]:

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import List, NoReturn, Optional
 
 IS_WINDOWS = platform.system() == "Windows"
+CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
 # ------------------------------------------------------ UAC / elevation --
@@ -49,6 +50,7 @@ def run_elevated_powershell(command: str, *, timeout: int = 600) -> subprocess.C
         return subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", full_ps],
             capture_output=True, text=True, timeout=timeout,
+            creationflags=CREATE_NO_WINDOW,
         )
     except FileNotFoundError as exc:
         raise RuntimeError("PowerShell not found on PATH.") from exc
@@ -68,7 +70,7 @@ def relaunch_self_elevated(reason: str = "Administrator privileges are required.
         f"Start-Process -FilePath '{sys.executable}' -Verb RunAs "
         f"-ArgumentList '{params.replace(chr(39), chr(39) * 2)}'"
     )
-    subprocess.run(["powershell", "-NoProfile", "-Command", ps])
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], creationflags=CREATE_NO_WINDOW)
     print(reason + " Relaunching elevated — please approve the UAC prompt.")
     raise SystemExit(10)
 
@@ -127,7 +129,10 @@ class CommandResult:
 
 def _run(cmd: List[str], *, timeout: int = 600, check: bool = False) -> CommandResult:
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout,
+            creationflags=CREATE_NO_WINDOW,
+        )
     except FileNotFoundError as exc:
         raise RuntimeError(f"Executable not found: {cmd[0]}. Is it installed and on PATH?") from exc
     except subprocess.TimeoutExpired as exc:

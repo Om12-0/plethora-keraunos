@@ -18,5 +18,7 @@ models/*.bin
 
 # Pytest / IDE
 .pytest_cache/
+.pytest_tmp/
 .vscode/
 .idea/
+.agent/

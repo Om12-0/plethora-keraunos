@@ -149,6 +149,52 @@ class _Worker(QThread):
             self.finished_err.emit(f"{exc}\n\n{traceback.format_exc(limit=5)}")
 
 
+class ApplyWorker(QThread):
+    progress = Signal(str, int, int)
+    log_line = Signal(str)
+    finished_ok = Signal(object)
+    finished_err = Signal(str)
+
+    def __init__(self, engine: ExecutionEngine, state: KeraunosState, elevation: str):
+        super().__init__()
+        self.engine = engine
+        self.state = state
+        self.elevation = elevation
+
+    def run(self):
+        try:
+            logs: List[str] = []
+            diff = self.engine.calculate_diff(self.state)
+            total_steps = (
+                len(diff.get("winget_add", []))
+                + len(diff.get("winget_remove", []))
+                + len(diff.get("scoop_add", []))
+                + len(diff.get("scoop_remove", []))
+                + len(diff.get("system_tweaks", {}))
+                + len(diff.get("custom_registry", []))
+                + len(diff.get("custom_actions", []))
+                + (1 if diff.get("dotfiles", {}).get("powershell_profile") else 0)
+            )
+            total_steps = max(total_steps, 1)
+            current_step = [0]
+
+            def _callback(msg: str):
+                logs.append(msg)
+                self.log_line.emit(msg)
+                if any(msg.startswith(prefix) for prefix in ("[WinGet]", "[Scoop]", "[System]", "[Registry]", "[Display]", "[Dotfiles]")):
+                    current_step[0] = min(current_step[0] + 1, total_steps)
+                    self.progress.emit(f"Applying configuration ({current_step[0]} of {total_steps})...", current_step[0], total_steps)
+
+            applied_diff = self.engine.apply_state(
+                self.state,
+                status_callback=_callback,
+                elevation=self.elevation,
+            )
+            self.finished_ok.emit((applied_diff, logs))
+        except Exception as exc:
+            self.finished_err.emit(f"{exc}\n\n{traceback.format_exc(limit=5)}")
+
+
 # ─── Non-hijacking Controls ────────────────────────────────────────────────
 
 class NoScrollComboBox(QComboBox):
@@ -229,12 +275,25 @@ class KeraunosWindow(QMainWindow):
         self.pending_state: Optional[KeraunosState] = None
         self.pending_diagnostics: List[ResolutionDiagnostic] = []
         self._worker: Optional[_Worker] = None
+        self._apply_worker: Optional[ApplyWorker] = None
         self._drag_pos = None
 
         # Load icon (user's custom PNG)
         self._icon_px = QPixmap(str(_ICON_PATH)) if _ICON_PATH.exists() else QPixmap()
 
         self._build()
+
+        # Background pre-warm SLM to avoid cold-start latency
+        self._prewarm_thread = _Worker(self._prewarm_slm)
+        self._prewarm_thread.start()
+
+    @staticmethod
+    def _prewarm_slm():
+        try:
+            from keraunos.slm import get_slm
+            get_slm()
+        except Exception:
+            pass
 
     # ── Build layout ──────────────────────────────────────────────────────
 
@@ -1028,6 +1087,20 @@ class KeraunosWindow(QMainWindow):
                     f'</div>'
                 )
 
+            # Hardware Display Configuration
+            display_actions = [d for d in diagnostics if d.target_type == "hardware_display"]
+            if display_actions:
+                has_action_cards = True
+                cards_html.append(
+                    f'<div style="background: #14121E; border: 1px solid #2A243C; border-radius: 10px; padding: 12px 16px; margin-bottom: 10px;">'
+                    f'<div style="font-weight: 600; color: #FFFFFF; font-size: 14px; margin-bottom: 6px;">'
+                    f'🖥️ Display & Monitor Configuration'
+                    f'</div>'
+                    f'<ul style="margin: 0; padding-left: 20px; color: #E4E4E7;">'
+                    + "".join(f'<li style="margin: 4px 0;"><strong>{html.escape(d.resolved_target)}</strong></li>' for d in display_actions)
+                    + '</ul></div>'
+                )
+
             # Git actions
             git_actions = [d for d in diagnostics if d.target_type == "action" and d.resolved_target == "git_sync"]
             if git_actions:
@@ -1086,13 +1159,15 @@ class KeraunosWindow(QMainWindow):
         is_sweep = any(d.target_type == "system_sweep" or d.resolved_target == "all_packages" for d in (self.pending_diagnostics or []))
         if is_sweep:
             self.apply_btn.setEnabled(False)
+            self.apply_btn.setText("Updating system packages...")
 
             def _apply_sweep():
                 import subprocess
+                from keraunos.executor import CREATE_NO_WINDOW
                 logs: List[str] = ["[WinGet] Starting system-wide software upgrade sweep..."]
                 try:
                     cmd = ["winget", "upgrade", "--all", "--accept-package-agreements", "--accept-source-agreements", "--include-unknown"]
-                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=600, creationflags=CREATE_NO_WINDOW)
                     if res.stdout:
                         logs.append(res.stdout)
                     if res.stderr:
@@ -1104,31 +1179,38 @@ class KeraunosWindow(QMainWindow):
 
             def _ok_sweep(logs: object):
                 self.apply_btn.setEnabled(True)
+                self.apply_btn.setText("Apply Changes")
                 self._log(str(logs))
                 QMessageBox.information(self, "Applied", "System-wide software upgrade completed successfully.")
 
             def _err_sweep(e: str):
                 self.apply_btn.setEnabled(True)
+                self.apply_btn.setText("Apply Changes")
                 self._on_failed(e)
 
             self._run_bg(_apply_sweep, _ok_sweep, _err_sweep)
             return
 
         state = self.pending_state
-        diff = self.engine.calculate_diff(state) if state else {}
+        if not state:
+            return
         elevation = self.settings.get("elevation", "raise")
         self.apply_btn.setEnabled(False)
+        self.apply_btn.setText("Applying configuration...")
 
-        def _apply():
-            logs: List[str] = []
-            self.engine.apply_state(
-                state, status_callback=logs.append, elevation=elevation)
-            return "\n".join(logs)
+        self._apply_worker = ApplyWorker(self.engine, state, elevation)
 
-        def _ok(logs: object):
+        def _on_progress(status_text: str, current: int, total: int):
+            self.apply_btn.setText(status_text)
+
+        def _on_log(line: str):
+            self._log(line)
+
+        def _ok(result: object):
+            applied_diff, logs = result
             self.apply_btn.setEnabled(True)
-            self._log(str(logs))
-            msg = generate_deterministic_commit_msg(diff)
+            self.apply_btn.setText("Apply Changes")
+            msg = generate_deterministic_commit_msg(applied_diff)
             self.on_commit(message=msg, silent=True)
             if self.settings.get("auto_push") and self.repo is not None:
                 try:
@@ -1137,13 +1219,18 @@ class KeraunosWindow(QMainWindow):
                 except Exception as exc:
                     self._log(f"[Git] Auto-push failed: {exc}")
             QMessageBox.information(self, "Applied",
-                                    "Your changes have been applied successfully.")
+                                    "All changes applied successfully!")
 
         def _err(e: str):
             self.apply_btn.setEnabled(True)
+            self.apply_btn.setText("Apply Changes")
             self._on_failed(e)
 
-        self._run_bg(_apply, _ok, _err)
+        self._apply_worker.progress.connect(_on_progress)
+        self._apply_worker.log_line.connect(_on_log)
+        self._apply_worker.finished_ok.connect(_ok)
+        self._apply_worker.finished_err.connect(_err)
+        self._apply_worker.start()
 
     def on_commit(self, message: Optional[str] = None,
                   silent: bool = False) -> None:

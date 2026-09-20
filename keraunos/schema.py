@@ -55,6 +55,7 @@ class KeraunosState(BaseModel):
     system: Dict[str, Any] = Field(default_factory=dict)
     registry: List[RegistryTweak] = Field(default_factory=list)
     dotfiles: DotfilesConfig = Field(default_factory=DotfilesConfig)
+    custom_actions: List[Dict[str, Any]] = Field(default_factory=list)
 
     @field_validator("version")
     @classmethod

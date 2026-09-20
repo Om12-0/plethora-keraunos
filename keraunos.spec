@@ -21,6 +21,7 @@ a = Analysis(
         'keraunos.catalog',
         'keraunos.compiler',
         'keraunos.config',
+        'keraunos.display',
         'keraunos.drift',
         'keraunos.dsc_exporter',
         'keraunos.executor',
@@ -68,6 +69,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=r'assets\keraunos.ico',
+    version='version_info.txt',
 )
 
 coll = COLLECT(

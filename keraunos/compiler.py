@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Tuple
 from rapidfuzz import fuzz, process
 
 from keraunos.catalog import WINGET_CATALOG
+from keraunos.display import set_primary_monitor
 from keraunos.scanner import assert_no_secrets
 from keraunos.schema import KeraunosState, WinGetPackage
 from keraunos.slm import extract_intent_slm
@@ -28,7 +29,20 @@ __all__ = [
     "FILLER_RE",
     "GREETINGS_RE",
     "SWEEP_UPDATE_RE",
+    "DISPLAY_PATTERN",
+    "TYPO_VERBS",
 ]
+
+TYPO_VERBS = {
+    r"\b(?:insall|intall|isnall|isntall|instl)\b": "install",
+    r"\b(?:uninsall|unintall|remov|delet)\b": "uninstall",
+    r"\b(?:updat|upgrd|updte)\b": "update",
+}
+
+DISPLAY_PATTERN = re.compile(
+    r"(?:change|set|make|switch)?\s*(?:the\s*)?(?:primary|main)\s*(?:screen|display|monitor)\s*(?:to\s*)?(?:screen\s*|monitor\s*|display\s*)?(\d+)",
+    re.IGNORECASE,
+)
 
 INSTALL_VERBS = r"(?:install|add|get|setup|grab|fetch)"
 REMOVE_VERBS = r"(?:uninstall|remove|delete|drop|purge)"
@@ -183,6 +197,9 @@ class OfflineIntentCompiler:
             match_key, score, _ = result
             if score >= min_confidence:
                 return self.catalog[match_key], float(score)
+            # Fallback N-Gram Typo Matcher for shorthand typos (>= 68%)
+            if score >= 68.0:
+                return self.catalog[match_key], float(score)
         return None, 0.0
 
     def resolve_preset(self, clause: str,
@@ -227,8 +244,12 @@ class OfflineIntentCompiler:
     # -- compilation --------------------------------------------------------------
     @staticmethod
     def split_clauses(prompt: str) -> List[str]:
+        # Pre-normalize typo verbs
+        normalized = prompt or ""
+        for pattern, replacement in TYPO_VERBS.items():
+            normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
         # Pre-strip conversational noise
-        cleaned = FILLER_RE.sub(" ", prompt or "")
+        cleaned = FILLER_RE.sub(" ", normalized)
         cleaned = re.sub(r"\s+", " ", cleaned)
         return [c.strip(" \t.") for c in _CLAUSE_SPLIT.split(cleaned) if c.strip(" \t.")]
 
@@ -267,6 +288,23 @@ class OfflineIntentCompiler:
         diagnostics: List[ResolutionDiagnostic] = []
 
         trimmed_prompt = text_prompt.strip()
+
+        # Instant Hardware Display Router
+        display_match = DISPLAY_PATTERN.search(trimmed_prompt)
+        if display_match:
+            monitor_num = int(display_match.group(1))
+            diagnostics.append(
+                ResolutionDiagnostic(
+                    original_token=trimmed_prompt,
+                    resolved_target=f"Primary Monitor -> Display {monitor_num}",
+                    target_type="hardware_display",
+                    confidence=100.0,
+                    action="set_primary",
+                    applied=True,
+                )
+            )
+            state.custom_actions.append({"type": "set_primary_monitor", "index": monitor_num})
+            return state, diagnostics
 
         # System-wide software update sweep check (evaluated BEFORE filler stripping)
         if SWEEP_UPDATE_RE.match(trimmed_prompt):
@@ -639,9 +677,9 @@ class OfflineIntentCompiler:
 
     # -- unresolved reporting (for UI warning banners) -------------------------------
     def find_unresolved(self, text_prompt: str,
-                        diagnostics: List[ResolutionDiagnostic]) -> List[str]:
+                         diagnostics: List[ResolutionDiagnostic]) -> List[str]:
         """Clauses that produced no preset/package/action diagnostic."""
-        if any(d.target_type in ("greeting", "system_sweep") for d in diagnostics):
+        if any(d.target_type in ("greeting", "system_sweep", "hardware_display") for d in diagnostics):
             return []
         unresolved: List[str] = []
         for clause in self.split_clauses(text_prompt):
@@ -658,8 +696,8 @@ class OfflineIntentCompiler:
                 ):
                     covered = True
                     break
-                if d.target_type in ("action", "system_sweep"):
-                    if d.resolved_target in ("git_sync", "all_packages"):
+                if d.target_type in ("action", "system_sweep", "hardware_display"):
+                    if d.resolved_target in ("git_sync", "all_packages") or d.target_type == "hardware_display":
                         covered = True
                         break
             if not covered:
