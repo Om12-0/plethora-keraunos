@@ -238,6 +238,31 @@ class ScoopTool:
         return res
 
 
+# ---------------------------------------------------------------- Chocolatey -
+class ChocoTool:
+    @staticmethod
+    def available() -> bool:
+        return shutil.which("choco") is not None
+
+    @staticmethod
+    def install(package: str) -> CommandResult:
+        if not ChocoTool.available():
+            raise RuntimeError("choco CLI not found. Install from https://chocolatey.org first.")
+        res = _run(["choco", "install", package, "-y"], timeout=1200)
+        if not res.ok:
+            raise RuntimeError(f"choco install {package} failed: {(res.stderr or res.stdout).strip()[-2000:]}")
+        return res
+
+    @staticmethod
+    def uninstall(package: str) -> CommandResult:
+        if not ChocoTool.available():
+            raise RuntimeError("choco CLI not found.")
+        res = _run(["choco", "uninstall", package, "-y"], timeout=1200)
+        if not res.ok:
+            raise RuntimeError(f"choco uninstall {package} failed: {(res.stderr or res.stdout).strip()[-2000:]}")
+        return res
+
+
 # -------------------------------------------------------------- Registry --
 _REG_TYPE_MAP = {
     "DWord": "DWord",

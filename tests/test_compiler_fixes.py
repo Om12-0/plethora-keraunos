@@ -81,3 +81,31 @@ def test_mutual_exclusivity_dark_and_light_mode():
     state_dark, _ = compiler.compile("dark mode")
     assert state_dark.system.get("dark_mode") is True
     assert state_dark.system.get("light_mode") is False
+
+
+def test_install_lightshot_resolves_package_without_light_mode():
+    """'install lightshot' must resolve to Skillbrains.Lightshot and NOT trigger light_mode."""
+    compiler = OfflineIntentCompiler()
+    state, diagnostics = compiler.compile("install lightshot")
+
+    # Winget must have Skillbrains.Lightshot
+    assert any(p.id == "Skillbrains.Lightshot" for p in state.winget)
+
+    # System must NOT have light_mode or dark_mode
+    assert "light_mode" not in state.system
+    assert "dark_mode" not in state.system
+
+    # Diagnostics check
+    resolved = [d.resolved_target for d in diagnostics]
+    assert "Skillbrains.Lightshot" in resolved
+    assert "light_mode" not in resolved
+
+
+def test_choco_and_scoop_compiler_routing():
+    """'choco install ripgrep' and 'scoop install neovim' route to respective providers."""
+    compiler = OfflineIntentCompiler()
+    state, diagnostics = compiler.compile("choco install ripgrep, scoop install neovim")
+
+    assert "ripgrep" in state.choco
+    assert "neovim" in state.scoop
+

@@ -190,6 +190,9 @@ WINGET_CATALOG: dict[str, str] = {
     "beekeeper": "BeekeeperStudio.BeekeeperStudio",
 
     # -- Utilities & compression ----------------------------------------------------
+    "lightshot": "Skillbrains.Lightshot",
+    "skillbrains.lightshot": "Skillbrains.Lightshot",
+    "flameshot": "Flameshot.Flameshot",
     "7zip": "7zip.7zip",
     "7-zip": "7zip.7zip",
     "7 zip": "7zip.7zip",
@@ -280,3 +283,53 @@ def lookup(name: str) -> str | None:
     if not name:
         return None
     return WINGET_CATALOG.get(name.strip().lower())
+
+
+def search_winget_live(app_name: str) -> str | None:
+    """Fallback query to local winget CLI for unlisted packages."""
+    if not app_name or not app_name.strip():
+        return None
+    import subprocess
+    import sys
+    try:
+        for cmd in (
+            ["winget", "search", app_name.strip(), "--exact", "--accept-source-agreements"],
+            ["winget", "search", app_name.strip(), "--accept-source-agreements"],
+        ):
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                creationflags=0x08000000 if sys.platform == "win32" else 0,
+                timeout=5,
+            )
+            lines = res.stdout.strip().splitlines()
+            id_col = None
+            ver_col = None
+            for idx, line in enumerate(lines):
+                if "Name" in line and "Id" in line:
+                    id_col = line.find("Id")
+                    ver_col = line.find("Version") if "Version" in line else None
+                    if idx + 1 < len(lines):
+                        for data_line in lines[idx + 2:]:
+                            if not data_line.strip():
+                                continue
+                            if id_col is not None:
+                                if ver_col and ver_col > id_col:
+                                    pkg_id = data_line[id_col:ver_col].strip()
+                                else:
+                                    parts = data_line.split()
+                                    pkg_id = parts[1] if len(parts) >= 2 else None
+                                if pkg_id:
+                                    return pkg_id
+            for line in lines[2:]:
+                parts = line.split()
+                if len(parts) >= 2:
+                    for p in parts[1:]:
+                        if "." in p:
+                            return p
+                    return parts[1]
+    except Exception:
+        pass
+    return None
+

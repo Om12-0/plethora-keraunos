@@ -52,6 +52,7 @@ class KeraunosState(BaseModel):
     version: int = 1
     winget: List[WinGetPackage] = Field(default_factory=list)
     scoop: List[str] = Field(default_factory=list)
+    choco: List[str] = Field(default_factory=list)
     system: Dict[str, Any] = Field(default_factory=dict)
     registry: List[RegistryTweak] = Field(default_factory=list)
     dotfiles: DotfilesConfig = Field(default_factory=DotfilesConfig)

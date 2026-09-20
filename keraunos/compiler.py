@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 
 from rapidfuzz import fuzz, process
 
-from keraunos.catalog import WINGET_CATALOG
+from keraunos.catalog import WINGET_CATALOG, search_winget_live
 from keraunos.display import set_primary_monitor
 from keraunos.scanner import assert_no_secrets
 from keraunos.schema import KeraunosState, WinGetPackage
@@ -31,6 +31,8 @@ __all__ = [
     "SWEEP_UPDATE_RE",
     "DISPLAY_PATTERN",
     "TYPO_VERBS",
+    "THEME_LIGHT_RE",
+    "THEME_DARK_RE",
 ]
 
 TYPO_VERBS = {
@@ -38,6 +40,9 @@ TYPO_VERBS = {
     r"\b(?:uninsall|unintall|remov|delet)\b": "uninstall",
     r"\b(?:updat|upgrd|updte)\b": "update",
 }
+
+THEME_LIGHT_RE = re.compile(r"\b(?:light\s*mode|light\s*theme|white\s*mode)\b", re.IGNORECASE)
+THEME_DARK_RE = re.compile(r"\b(?:dark\s*mode|dark\s*theme|black\s*mode)\b", re.IGNORECASE)
 
 DISPLAY_PATTERN = re.compile(
     r"(?:change|set|make|switch)?\s*(?:the\s*)?(?:primary|main)\s*(?:screen|display|monitor)\s*(?:to\s*)?(?:screen\s*|monitor\s*|display\s*)?(\d+)",
@@ -47,6 +52,9 @@ DISPLAY_PATTERN = re.compile(
 INSTALL_VERBS = r"(?:install|add|get|setup|grab|fetch)"
 REMOVE_VERBS = r"(?:uninstall|remove|delete|drop|purge)"
 UPDATE_VERBS = r"(?:update|upgrade|refresh|bump)"
+
+_CHOCO_INSTALL_RE = re.compile(rf"\b(?:choco|chocolatey)\s+{INSTALL_VERBS}\s+([a-zA-Z0-9][a-zA-Z0-9\s\-_~\.\+]*?)(?=$)", flags=re.IGNORECASE)
+_SCOOP_INSTALL_RE = re.compile(rf"\bscoop\s+{INSTALL_VERBS}\s+([a-zA-Z0-9][a-zA-Z0-9\s\-_~\.\+]*?)(?=$)", flags=re.IGNORECASE)
 
 # System-wide update sweep pattern (evaluated BEFORE filler stripping)
 SWEEP_UPDATE_RE = re.compile(
@@ -200,6 +208,10 @@ class OfflineIntentCompiler:
             # Fallback N-Gram Typo Matcher for shorthand typos (>= 68%)
             if score >= 68.0:
                 return self.catalog[match_key], float(score)
+        # 4. Fallback query to local winget CLI for unlisted packages
+        live_id = search_winget_live(clean)
+        if live_id:
+            return live_id, 90.0
         return None, 0.0
 
     def resolve_preset(self, clause: str,
@@ -211,6 +223,9 @@ class OfflineIntentCompiler:
         # 1. Exact phrase hit
         if clean in PHRASE_PRESET_MAP:
             preset_key, original_val = PHRASE_PRESET_MAP[clean]
+            if preset_key in ("light_mode", "dark_mode") or "light" in clean or "dark" in clean:
+                if not (THEME_LIGHT_RE.search(clean) or THEME_DARK_RE.search(clean)):
+                    return None
             return preset_key, original_val, 100.0
 
         # 2. Extract single best phrase match via whole-phrase token_sort_ratio
@@ -224,6 +239,11 @@ class OfflineIntentCompiler:
 
         preset_key, original_val = PHRASE_PRESET_MAP[matched_phrase]
         target_val = original_val
+
+        # Theme guard: ensure light_mode/dark_mode only match when accompanied by explicit theme keywords
+        if preset_key in ("light_mode", "dark_mode") or "light" in matched_phrase or "dark" in matched_phrase:
+            if not (THEME_LIGHT_RE.search(clean) or THEME_DARK_RE.search(clean)):
+                return None
 
         # 3. Explicit Polarity Inversion & Theme Routing
         has_negation = any(neg in clean for neg in NEGATION_STEMS)
@@ -460,6 +480,45 @@ class OfflineIntentCompiler:
                 continue
 
             # -------------------------------------------------------------
+            # 3b. Explicit Package Managers: "choco|chocolatey install <name>" / "scoop install <name>"
+            # -------------------------------------------------------------
+            choco_match = _CHOCO_INSTALL_RE.search(lower)
+            if choco_match:
+                candidate = self._clean_candidate(choco_match.group(1))
+                if candidate:
+                    if candidate not in state.choco:
+                        state.choco.append(candidate)
+                    diagnostics.append(
+                        ResolutionDiagnostic(
+                            original_token=candidate,
+                            resolved_target=f"choco:{candidate}",
+                            target_type="package_choco",
+                            confidence=100.0,
+                            action="add",
+                            applied=True,
+                        )
+                    )
+                continue
+
+            scoop_match = _SCOOP_INSTALL_RE.search(lower)
+            if scoop_match:
+                candidate = self._clean_candidate(scoop_match.group(1))
+                if candidate:
+                    if candidate not in state.scoop:
+                        state.scoop.append(candidate)
+                    diagnostics.append(
+                        ResolutionDiagnostic(
+                            original_token=candidate,
+                            resolved_target=f"scoop:{candidate}",
+                            target_type="package_scoop",
+                            confidence=100.0,
+                            action="add",
+                            applied=True,
+                        )
+                    )
+                continue
+
+            # -------------------------------------------------------------
             # 4. Package Addition: "install|add|get|setup <name>"
             # -------------------------------------------------------------
             install_match = _INSTALL_RE.search(lower)
@@ -539,7 +598,7 @@ class OfflineIntentCompiler:
             try:
                 slm_result = extract_intent_slm(slm_input)
                 if slm_result:
-                    self._apply_slm_result(state, diagnostics, slm_result)
+                    self._apply_slm_result(state, diagnostics, slm_result, prompt=trimmed_prompt)
             except Exception:
                 pass  # Graceful degradation: Tier-1 only
 
@@ -564,6 +623,7 @@ class OfflineIntentCompiler:
         state: KeraunosState,
         diagnostics: List[ResolutionDiagnostic],
         slm_result: Dict,
+        prompt: str = "",
     ) -> None:
         """Translate SLM JSON output into state mutations and diagnostics."""
         # -- packages --
@@ -624,6 +684,11 @@ class OfflineIntentCompiler:
             val = preset.get("value", True)
             if not key:
                 continue
+
+            # Theme guard: ensure light_mode/dark_mode only apply when accompanied by explicit theme keywords in prompt
+            if key in ("light_mode", "dark_mode"):
+                if not (THEME_LIGHT_RE.search(prompt) or THEME_DARK_RE.search(prompt)):
+                    continue
 
             # Enforce mutual exclusivity for theme presets
             if key == "dark_mode" and val:

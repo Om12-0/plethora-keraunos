@@ -12,7 +12,7 @@ import yaml
 from keraunos.registry_map import SYSTEM_PRESETS, resolve_system_tweaks
 from keraunos.scanner import assert_no_secrets
 from keraunos.schema import KeraunosState
-from keraunos.tools import RegistryTool, ScoopTool, WingetTool, is_admin, refresh_windows_shell
+from keraunos.tools import ChocoTool, RegistryTool, ScoopTool, WingetTool, is_admin, refresh_windows_shell
 
 StatusCallback = Callable[[str], None]
 
@@ -21,6 +21,11 @@ _EXPLORER_SENSITIVE = ("Explorer", "Taskbar", "Search", "StartMenu", "Desktop", 
 
 
 CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
+
+
+def install_choco_package(package_id: str):
+    cmd = ["choco", "install", package_id, "-y"]
+    return subprocess.run(cmd, capture_output=True, creationflags=CREATE_NO_WINDOW)
 
 
 def _is_hklm(path: str) -> bool:
@@ -61,6 +66,7 @@ class ExecutionEngine:
         cur_winget = {p.id: (p.version or "") for p in current.winget}
         des_winget = {p.id: (p.version or "") for p in desired.winget}
         cur_scoop, des_scoop = set(current.scoop), set(desired.scoop)
+        cur_choco, des_choco = set(getattr(current, "choco", [])), set(getattr(desired, "choco", []))
 
         # System tweaks that are newly enabled (or changed value).
         system_tweaks: Dict[str, Any] = {}
@@ -81,6 +87,8 @@ class ExecutionEngine:
                                      if des_winget[pid] != cur_winget[pid] and des_winget[pid]),
             "scoop_add": sorted(des_scoop - cur_scoop),
             "scoop_remove": sorted(cur_scoop - des_scoop),
+            "choco_add": sorted(des_choco - cur_choco),
+            "choco_remove": sorted(cur_choco - des_choco),
             "system_tweaks": system_tweaks,
             "custom_registry": new_reg,
             "dotfiles": desired.dotfiles.model_dump(),
@@ -97,6 +105,10 @@ class ExecutionEngine:
             lines.append(f"+ scoop: {pkg}")
         for pkg in diff.get("scoop_remove", []):
             lines.append(f"- scoop: {pkg}")
+        for pkg in diff.get("choco_add", []):
+            lines.append(f"+ choco: {pkg}")
+        for pkg in diff.get("choco_remove", []):
+            lines.append(f"- choco: {pkg}")
         for key, val in (diff.get("system_tweaks") or {}).items():
             lines.append(f"~ system.{key} = {val}")
         for reg in diff.get("custom_registry", []):
@@ -118,6 +130,8 @@ class ExecutionEngine:
         lines = ["# Auto-generated rollback script — run to undo the last `apply`.", ""]
         for pkg in diff.get("winget_add", []):
             lines.append(f"winget uninstall --id {pkg} -e --silent --accept-source-agreements")
+        for pkg in diff.get("choco_add", []):
+            lines.append(f"choco uninstall {pkg} -y")
         for reg in resolve_system_tweaks({k: True for k in diff.get("system_tweaks", {}) if k in SYSTEM_PRESETS}):
             pass  # system preset previous values unknown without snapshot; record intent below
         if diff.get("system_tweaks"):
@@ -210,11 +224,18 @@ class ExecutionEngine:
             for pkg in diff["scoop_remove"]:
                 _step(f"[Scoop] Removing {pkg}...",
                       lambda p=pkg: ScoopTool.uninstall(p))
+            for pkg in diff["choco_remove"]:
+                _step(f"[Chocolatey] Removing {pkg}...",
+                      lambda p=pkg: ChocoTool.uninstall(p))
 
-        # 3. Scoop installs
+        # 3. Scoop & Chocolatey installs
         for pkg in diff["scoop_add"]:
             _step(f"[Scoop] Installing {pkg}...",
                   lambda p=pkg: ScoopTool.install(p))
+        for pkg in diff["choco_add"]:
+            _step(f"[Chocolatey] Installing {pkg}...",
+                  lambda p=pkg: install_choco_package(p))
+
 
         # 4. System registry presets (only enabled keys)
         enabled = {k: v for k, v in (desired.system or {}).items() if v}
