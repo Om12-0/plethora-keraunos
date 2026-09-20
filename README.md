@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/omkaranand/plethora-keraunos/releases"><img src="https://img.shields.io/badge/version-1.0.0-8B5CF6.svg" alt="Version 1.0.0"></a>
+  <a href="https://github.com/Om12-0/plethora-keraunos/releases"><img src="https://img.shields.io/badge/version-1.0.0-8B5CF6.svg" alt="Version 1.0.0"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License MIT"></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4.svg" alt="Platform Windows">
   <img src="https://img.shields.io/badge/LLM--Free-100%25%20Offline-emerald.svg" alt="100% Offline">
@@ -32,12 +32,12 @@
 
 ## 📦 Installation & Download
 
-Download the ready-to-use Windows Installer from the **[Releases](https://github.com/omkaranand/plethora-keraunos/releases)** page:
+Download the ready-to-use Windows Installer from the **[Releases](https://github.com/Om12-0/plethora-keraunos/releases)** page:
 - **Installer:** `Plethora-Keraunos-Setup-1.0.0.exe`
 
 Or install manually via CLI:
 ```cmd
-git clone https://github.com/omkaranand/plethora-keraunos.git
+git clone https://github.com/Om12-0/plethora-keraunos.git
 cd plethora-keraunos
 pip install -r requirements.txt
 python keraunos.py ui

@@ -2,7 +2,7 @@
 #define MyAppName "Plethora Keraunos"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "Plethora Labs"
-#define MyAppURL "https://github.com/omkaranand/plethora-keraunos"
+#define MyAppURL "https://github.com/Om12-0/plethora-keraunos"
 #define MyAppExeName "keraunos.exe"
 
 [Setup]
