@@ -1,14 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_dynamic_libs
+
 block_cipher = None
+
+# Collect native llama.cpp DLLs
+llama_binaries = collect_dynamic_libs('llama_cpp')
 
 a = Analysis(
     ['keraunos.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=llama_binaries,
     datas=[
         ('assets', 'assets'),
         ('keraunosICON.png', '.'),
+        ('models/qwen2.5-0.5b-instruct-q4_k_m.gguf', 'models'),
     ],
     hiddenimports=[
         'keraunos',
@@ -22,11 +28,13 @@ a = Analysis(
         'keraunos.registry_map',
         'keraunos.scanner',
         'keraunos.schema',
+        'keraunos.slm',
         'keraunos.tools',
         'keraunos.ui',
         'keraunos.ui.app',
         'keraunos.ui.styles',
         'rapidfuzz',
+        'llama_cpp',
         'PySide6',
         'git',
         'pydantic',

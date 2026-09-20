@@ -16,6 +16,7 @@ from rapidfuzz import fuzz, process
 from keraunos.catalog import WINGET_CATALOG
 from keraunos.scanner import assert_no_secrets
 from keraunos.schema import KeraunosState, WinGetPackage
+from keraunos.slm import extract_intent_slm
 
 __all__ = [
     "ResolutionDiagnostic",
@@ -485,6 +486,25 @@ class OfflineIntentCompiler:
                         )
                     )
 
+        # =================================================================
+        # TIER 2: SLM Fallback (Qwen2.5-0.5B local inference)
+        # Route to SLM when:
+        #   (a) unresolved clauses remain, OR
+        #   (b) prompt is complex natural speech (6+ words) with no applied results
+        # =================================================================
+        applied_count = sum(1 for d in diagnostics if d.applied)
+        unresolved = self.find_unresolved(text_prompt, diagnostics)
+        word_count = len(trimmed_prompt.split())
+
+        if unresolved or (word_count >= 6 and applied_count == 0):
+            slm_input = ", ".join(unresolved) if unresolved else trimmed_prompt
+            try:
+                slm_result = extract_intent_slm(slm_input)
+                if slm_result:
+                    self._apply_slm_result(state, diagnostics, slm_result)
+            except Exception:
+                pass  # Graceful degradation: Tier-1 only
+
         # Dedupe identical diagnostics while preserving order
         seen, unique = set(), []
         for d in diagnostics:
@@ -500,6 +520,120 @@ class OfflineIntentCompiler:
         if not text or len(text.split()) > 4:
             return False
         return True
+
+    def _apply_slm_result(
+        self,
+        state: KeraunosState,
+        diagnostics: List[ResolutionDiagnostic],
+        slm_result: Dict,
+    ) -> None:
+        """Translate SLM JSON output into state mutations and diagnostics."""
+        # -- packages --
+        for pkg in slm_result.get("packages", []):
+            name = (pkg.get("name") or "").strip()
+            action = (pkg.get("action") or "install").strip().lower()
+            if not name:
+                continue
+
+            pkg_id, conf = self.resolve_package(name, min_confidence=60.0)
+            if not pkg_id:
+                continue
+
+            if action == "install":
+                self._add_package(state, pkg_id)
+                diagnostics.append(
+                    ResolutionDiagnostic(
+                        original_token=name,
+                        resolved_target=pkg_id,
+                        target_type="package",
+                        confidence=95.0,
+                        action="add",
+                        applied=True,
+                    )
+                )
+            elif action == "remove":
+                state.winget = [p for p in state.winget if p.id.lower() != pkg_id.lower()]
+                diagnostics.append(
+                    ResolutionDiagnostic(
+                        original_token=name,
+                        resolved_target=pkg_id,
+                        target_type="package",
+                        confidence=95.0,
+                        action="remove",
+                        applied=True,
+                    )
+                )
+            elif action == "update":
+                existing = next((p for p in state.winget if p.id.lower() == pkg_id.lower()), None)
+                if existing:
+                    existing.version = None
+                else:
+                    self._add_package(state, pkg_id)
+                diagnostics.append(
+                    ResolutionDiagnostic(
+                        original_token=name,
+                        resolved_target=pkg_id,
+                        target_type="package",
+                        confidence=95.0,
+                        action="update",
+                        applied=True,
+                    )
+                )
+
+        # -- presets --
+        for preset in slm_result.get("presets", []):
+            key = (preset.get("key") or "").strip()
+            val = preset.get("value", True)
+            if not key:
+                continue
+
+            # Enforce mutual exclusivity for theme presets
+            if key == "dark_mode" and val:
+                state.system["dark_mode"] = True
+                state.system["light_mode"] = False
+            elif key == "light_mode" and val:
+                state.system["light_mode"] = True
+                state.system["dark_mode"] = False
+            else:
+                state.system[key] = val
+
+            diagnostics.append(
+                ResolutionDiagnostic(
+                    original_token=key,
+                    resolved_target=key,
+                    target_type="preset",
+                    confidence=95.0,
+                    action="enable" if val else "disable",
+                    applied=True,
+                )
+            )
+
+        # -- meta_action --
+        meta = slm_result.get("meta_action")
+        if meta == "update_all":
+            for p in state.winget:
+                p.version = None
+            diagnostics.append(
+                ResolutionDiagnostic(
+                    original_token="update_all",
+                    resolved_target="all_packages",
+                    target_type="system_sweep",
+                    confidence=95.0,
+                    action="update",
+                    applied=True,
+                )
+            )
+        elif meta == "git_sync":
+            diagnostics.append(
+                ResolutionDiagnostic(
+                    original_token="git_sync",
+                    resolved_target="git_sync",
+                    target_type="action",
+                    confidence=95.0,
+                    action="push",
+                    applied=True,
+                )
+            )
 
     BARE_VERBS = frozenset({"update", "upgrade", "refresh", "bump", "install", "add", "get", "setup", "uninstall", "remove", "delete", "set"})
 
