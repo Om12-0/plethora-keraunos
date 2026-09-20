@@ -383,39 +383,76 @@
     }
 
     .window-chrome {
-      background: rgba(13, 15, 23, 0.9);
+      background: #1a1c28;
       border-bottom: 1px solid var(--border);
-      padding: 12px 18px;
+      padding: 0 0 0 12px;
       display: flex;
       align-items: center;
-      position: relative;
+      height: 36px;
+      user-select: none;
     }
 
-    .window-dots {
+    .win-titlebar-left {
       display: flex;
       align-items: center;
       gap: 8px;
+      flex: 1;
+      min-width: 0;
     }
 
-    .dot {
-      width: 11px;
-      height: 11px;
-      border-radius: 50%;
+    .win-appicon {
+      width: 16px;
+      height: 16px;
+      object-fit: contain;
+      border-radius: 2px;
+      flex-shrink: 0;
     }
 
-    .dot.red { background: #ef4444; }
-    .dot.yellow { background: #eab308; }
-    .dot.green { background: #22c55e; }
+    .win-appicon-fallback {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      background: linear-gradient(135deg, var(--primary), var(--cyan));
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      color: #fff;
+      font-weight: 700;
+    }
 
     .window-title {
-      position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 0.82rem;
-      font-weight: 500;
+      font-size: 0.76rem;
+      font-weight: 400;
       color: var(--muted);
-      letter-spacing: 0.02em;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
+
+    .win-controls {
+      display: flex;
+      align-items: stretch;
+      height: 36px;
+      flex-shrink: 0;
+    }
+
+    .win-btn {
+      width: 46px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      color: var(--muted);
+      cursor: default;
+      transition: background 0.1s;
+    }
+
+    .win-btn:hover { background: rgba(255,255,255,0.07); }
+    .win-btn.win-close:hover { background: #c42b1c; color: #fff; }
 
     .window-body {
       padding: 24px;
@@ -885,7 +922,7 @@
   <nav class="sticky-nav">
     <div class="nav-container">
       <a href="#" class="brand-group">
-        <img class="brand-logo" src="https://raw.githubusercontent.com/Om12-0/plethora-keraunos/master/keraunos/ui/assets/icon.png" alt="Keraunos" />
+        <img class="brand-logo" src="https://raw.githubusercontent.com/Om12-0/plethora-keraunos/master/keraunos/ui/assets/icon.png" alt="Keraunos" crossorigin="anonymous" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%237c3aed%22/%3E%3Ctext x=%2216%22 y=%2222%22 text-anchor=%22middle%22 font-size=%2218%22 font-family=%22system-ui%22 fill=%22white%22%3EK%3C/text%3E%3C/svg%3E';" />
         <span>Plethora Keraunos</span>
         <span class="version-badge">v1.0.2</span>
       </a>
@@ -940,14 +977,22 @@
     </div>
 
     <div class="mock-window reveal">
-      <!-- Window Chrome -->
+      <!-- Window Chrome (Windows-style) -->
       <div class="window-chrome">
-        <div class="window-dots">
-          <div class="dot red"></div>
-          <div class="dot yellow"></div>
-          <div class="dot green"></div>
+        <div class="win-titlebar-left">
+          <img class="win-appicon" id="win-appicon-img"
+            src="https://raw.githubusercontent.com/Om12-0/plethora-keraunos/master/keraunos/ui/assets/icon.png"
+            alt="Keraunos"
+            crossorigin="anonymous"
+            onerror="this.style.display='none';document.getElementById('win-appicon-fb').style.display='flex';" />
+          <div class="win-appicon-fallback" id="win-appicon-fb" style="display:none;">K</div>
+          <span class="window-title">Keraunos — Orchestrator</span>
         </div>
-        <div class="window-title">Keraunos — Orchestrator</div>
+        <div class="win-controls">
+          <div class="win-btn" title="Minimize">&#x2013;</div>
+          <div class="win-btn" title="Maximize">&#x25A1;</div>
+          <div class="win-btn win-close" title="Close">&#x2715;</div>
+        </div>
       </div>
 
       <!-- Window Body -->
@@ -1098,7 +1143,7 @@
     <div class="footer-container">
       <div class="footer-main">
         <div class="footer-left">
-          <img class="brand-logo" src="https://raw.githubusercontent.com/Om12-0/plethora-keraunos/master/keraunos/ui/assets/icon.png" alt="Keraunos" />
+          <img class="brand-logo" src="https://raw.githubusercontent.com/Om12-0/plethora-keraunos/master/keraunos/ui/assets/icon.png" alt="Keraunos" crossorigin="anonymous" onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%237c3aed%22/%3E%3Ctext x=%2216%22 y=%2222%22 text-anchor=%22middle%22 font-size=%2218%22 font-family=%22system-ui%22 fill=%22white%22%3EK%3C/text%3E%3C/svg%3E';" />
           <span>Plethora Keraunos v1.0.2</span>
         </div>
         <div class="footer-links">
