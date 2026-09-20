@@ -75,3 +75,55 @@ def set_primary_monitor(monitor_index: int = 1) -> bool:
     )
     user32.ChangeDisplaySettingsExW(None, None, None, 0, None)
     return res == 0
+
+
+# Win32 Display Topology Flags for SetDisplayConfig
+SDC_APPLY = 0x00000080
+SDC_TOPOLOGY_INTERNAL = 0x00000001  # PC screen only
+SDC_TOPOLOGY_CLONE = 0x00000002     # Duplicate
+SDC_TOPOLOGY_EXTEND = 0x00000004    # Extend
+SDC_TOPOLOGY_EXTERNAL = 0x00000008  # Second screen only
+
+
+def set_display_topology(topology: str = "clone") -> bool:
+    """Set multi-monitor display topology ('clone'/'duplicate', 'extend', 'internal'/'pc_only', 'external'/'second_only')."""
+    top_lower = (topology or "").strip().lower()
+    flag_map = {
+        "clone": SDC_TOPOLOGY_CLONE,
+        "duplicate": SDC_TOPOLOGY_CLONE,
+        "mirror": SDC_TOPOLOGY_CLONE,
+        "extend": SDC_TOPOLOGY_EXTEND,
+        "internal": SDC_TOPOLOGY_INTERNAL,
+        "pc_only": SDC_TOPOLOGY_INTERNAL,
+        "external": SDC_TOPOLOGY_EXTERNAL,
+        "second_only": SDC_TOPOLOGY_EXTERNAL,
+    }
+    flag = flag_map.get(top_lower, SDC_TOPOLOGY_CLONE)
+
+    # 1. Primary Win32 API call: SetDisplayConfig
+    if sys.platform == "win32" and user32 is not None and hasattr(user32, "SetDisplayConfig"):
+        try:
+            res = user32.SetDisplayConfig(0, None, 0, None, SDC_APPLY | flag)
+            if res == 0:
+                return True
+        except Exception:
+            pass
+
+    # 2. Native Windows fallback via DisplaySwitch.exe
+    if sys.platform == "win32":
+        import subprocess
+        switch_arg = {
+            SDC_TOPOLOGY_CLONE: "/clone",
+            SDC_TOPOLOGY_EXTEND: "/extend",
+            SDC_TOPOLOGY_INTERNAL: "/internal",
+            SDC_TOPOLOGY_EXTERNAL: "/external",
+        }.get(flag, "/clone")
+        try:
+            CREATE_NO_WINDOW = 0x08000000
+            res = subprocess.run(["DisplaySwitch.exe", switch_arg], capture_output=True, creationflags=CREATE_NO_WINDOW)
+            return res.returncode == 0
+        except Exception:
+            pass
+
+    return False
+

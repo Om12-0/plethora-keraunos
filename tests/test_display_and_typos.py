@@ -61,3 +61,35 @@ def test_display_diff_rendering():
     assert len(diff.get("custom_actions", [])) == 1
     diff_text = engine.render_diff_text(diff)
     assert "hardware.display.primary = Display 2" in diff_text
+
+
+def test_display_duplicate_and_compound_prompt():
+    compiler = OfflineIntentCompiler()
+    prompt = "duplicate monitor 1 to 2 install chrome"
+    state, diagnostics = compiler.compile(prompt)
+
+    # Must contain both display topology action AND Google.Chrome package
+    disp_diag = next((d for d in diagnostics if d.target_type == "hardware_display"), None)
+    assert disp_diag is not None
+    assert "Duplicate" in disp_diag.resolved_target
+
+    chrome_diag = next((d for d in diagnostics if d.resolved_target == "Google.Chrome"), None)
+    assert chrome_diag is not None
+    assert any(p.id == "Google.Chrome" for p in state.winget)
+
+    # 0 unresolved items (no spurious 9MX021J8VV46 or unrecognized warning)
+    unresolved = compiler.find_unresolved(prompt, diagnostics)
+    assert unresolved == []
+    assert not any(p.id == "9MX021J8VV46" for p in state.winget)
+
+
+def test_numeric_tokens_rejected_by_resolve_package():
+    compiler = OfflineIntentCompiler()
+    pkg_id, conf = compiler.resolve_package("2")
+    assert pkg_id is None
+    assert conf == 0.0
+
+    pkg_id2, conf2 = compiler.resolve_package("1")
+    assert pkg_id2 is None
+    assert conf2 == 0.0
+

@@ -44,10 +44,38 @@ TYPO_VERBS = {
 THEME_LIGHT_RE = re.compile(r"\b(?:light\s*mode|light\s*theme|white\s*mode)\b", re.IGNORECASE)
 THEME_DARK_RE = re.compile(r"\b(?:dark\s*mode|dark\s*theme|black\s*mode)\b", re.IGNORECASE)
 
-DISPLAY_PATTERN = re.compile(
-    r"(?:change|set|make|switch)?\s*(?:the\s*)?(?:primary|main)\s*(?:screen|display|monitor)\s*(?:to\s*)?(?:screen\s*|monitor\s*|display\s*)?(\d+)",
+DISPLAY_PRIMARY_RE = re.compile(
+    r"\b(?:"
+    r"(?:change|set|make|switch)\s+(?:the\s*)?(?:primary|main)\s+(?:screen|display|monitor)\s+(?:to\s*)?(?:screen\s*|monitor\s*|display\s*)?(\d+)|"
+    r"(?:change|set|make|switch)\s+(?:the\s*)?(?:screen|display|monitor)\s+(\d+)\s+(?:to\s+be\s+)?(?:the\s*)?(?:primary|main)|"
+    r"primary\s+(?:screen|display|monitor)\s+(?:to\s*)?(\d+)"
+    r")\b",
     re.IGNORECASE,
 )
+DISPLAY_DUPLICATE_RE = re.compile(
+    r"\b(?:"
+    r"duplicate\s+(?:the\s*)?(?:screen[s]?|display[s]?|monitor[s]?)?(?:\s*(\d+)\s*(?:to|and|\&)\s*(\d+))?|"
+    r"clone\s+(?:the\s*)?(?:screen[s]?|display[s]?|monitor[s]?)?(?:\s*(\d+)\s*(?:to|and|\&)\s*(\d+))?|"
+    r"mirror\s+(?:the\s*)?(?:screen[s]?|display[s]?|monitor[s]?)?(?:\s*(\d+)\s*(?:to|and|\&)\s*(\d+))?"
+    r")\b",
+    re.IGNORECASE,
+)
+DISPLAY_EXTEND_RE = re.compile(
+    r"\b(?:"
+    r"extend\s+(?:the\s*)?(?:screen[s]?|display[s]?|monitor[s]?|desktop)?(?:\s*(\d+)\s*(?:to|and|\&)\s*(\d+))?"
+    r")\b",
+    re.IGNORECASE,
+)
+DISPLAY_INTERNAL_RE = re.compile(
+    r"\b(?:pc\s*screen\s*only|first\s*screen\s*only|internal\s*display\s*only)\b",
+    re.IGNORECASE,
+)
+DISPLAY_EXTERNAL_RE = re.compile(
+    r"\b(?:second\s*screen\s*only|external\s*display\s*only|projector\s*only)\b",
+    re.IGNORECASE,
+)
+
+DISPLAY_PATTERN = DISPLAY_PRIMARY_RE
 
 INSTALL_VERBS = r"(?:install|add|get|setup|grab|fetch)"
 REMOVE_VERBS = r"(?:uninstall|remove|delete|drop|purge)"
@@ -204,6 +232,9 @@ class OfflineIntentCompiler:
         clean = (raw_name or "").strip().lower()
         if not clean:
             return None, 0.0
+        # Guard: Reject single digits, pure numbers, or single-char tokens from catalog matching
+        if clean.isdigit() or len(clean) <= 1:
+            return None, 0.0
         # 1. Exact match against catalog keys
         if clean in self.catalog:
             return self.catalog[clean], 100.0
@@ -320,13 +351,17 @@ class OfflineIntentCompiler:
 
         trimmed_prompt = text_prompt.strip()
 
-        # Instant Hardware Display Router
-        display_match = DISPLAY_PATTERN.search(trimmed_prompt)
-        if display_match:
-            monitor_num = int(display_match.group(1))
+        # Multi-Monitor Hardware Display Extraction (Primary, Duplicate, Extend, Internal, External)
+        working_prompt = trimmed_prompt
+
+        # 1. Primary monitor match
+        prim_match = DISPLAY_PRIMARY_RE.search(working_prompt)
+        if prim_match:
+            g = [m for m in prim_match.groups() if m]
+            monitor_num = int(g[0]) if g else 1
             diagnostics.append(
                 ResolutionDiagnostic(
-                    original_token=trimmed_prompt,
+                    original_token=prim_match.group(0),
                     resolved_target=f"Primary Monitor -> Display {monitor_num}",
                     target_type="hardware_display",
                     confidence=100.0,
@@ -335,6 +370,74 @@ class OfflineIntentCompiler:
                 )
             )
             state.custom_actions.append({"type": "set_primary_monitor", "index": monitor_num})
+            working_prompt = working_prompt[:prim_match.start()] + " " + working_prompt[prim_match.end():]
+
+        # 2. Duplicate / Clone / Mirror match
+        dup_match = DISPLAY_DUPLICATE_RE.search(working_prompt)
+        if dup_match:
+            diagnostics.append(
+                ResolutionDiagnostic(
+                    original_token=dup_match.group(0),
+                    resolved_target="Display Topology -> Duplicate (Clone)",
+                    target_type="hardware_display",
+                    confidence=100.0,
+                    action="set_topology",
+                    applied=True,
+                )
+            )
+            state.custom_actions.append({"type": "set_display_topology", "topology": "clone"})
+            working_prompt = working_prompt[:dup_match.start()] + " " + working_prompt[dup_match.end():]
+
+        # 3. Extend match
+        ext_match = DISPLAY_EXTEND_RE.search(working_prompt)
+        if ext_match:
+            diagnostics.append(
+                ResolutionDiagnostic(
+                    original_token=ext_match.group(0),
+                    resolved_target="Display Topology -> Extend Desktop",
+                    target_type="hardware_display",
+                    confidence=100.0,
+                    action="set_topology",
+                    applied=True,
+                )
+            )
+            state.custom_actions.append({"type": "set_display_topology", "topology": "extend"})
+            working_prompt = working_prompt[:ext_match.start()] + " " + working_prompt[ext_match.end():]
+
+        # 4. PC Screen Only (Internal)
+        int_match = DISPLAY_INTERNAL_RE.search(working_prompt)
+        if int_match:
+            diagnostics.append(
+                ResolutionDiagnostic(
+                    original_token=int_match.group(0),
+                    resolved_target="Display Topology -> PC Screen Only",
+                    target_type="hardware_display",
+                    confidence=100.0,
+                    action="set_topology",
+                    applied=True,
+                )
+            )
+            state.custom_actions.append({"type": "set_display_topology", "topology": "pc_only"})
+            working_prompt = working_prompt[:int_match.start()] + " " + working_prompt[int_match.end():]
+
+        # 5. Second Screen Only (External)
+        ext_only_match = DISPLAY_EXTERNAL_RE.search(working_prompt)
+        if ext_only_match:
+            diagnostics.append(
+                ResolutionDiagnostic(
+                    original_token=ext_only_match.group(0),
+                    resolved_target="Display Topology -> Second Screen Only",
+                    target_type="hardware_display",
+                    confidence=100.0,
+                    action="set_topology",
+                    applied=True,
+                )
+            )
+            state.custom_actions.append({"type": "set_display_topology", "topology": "second_only"})
+            working_prompt = working_prompt[:ext_only_match.start()] + " " + working_prompt[ext_only_match.end():]
+
+        working_prompt = working_prompt.strip()
+        if not working_prompt and diagnostics:
             return state, diagnostics
 
         # System-wide software update sweep check (evaluated BEFORE filler stripping)
@@ -367,7 +470,7 @@ class OfflineIntentCompiler:
             )
             return state, diagnostics
 
-        for raw_clause in self.split_clauses(text_prompt):
+        for raw_clause in self.split_clauses(working_prompt or text_prompt):
             clause = raw_clause.strip()
             if not clause:
                 continue

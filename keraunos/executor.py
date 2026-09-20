@@ -116,6 +116,8 @@ class ExecutionEngine:
         for act in diff.get("custom_actions", []):
             if act.get("type") == "set_primary_monitor":
                 lines.append(f"~ hardware.display.primary = Display {act.get('index', 1)}")
+            elif act.get("type") == "set_display_topology":
+                lines.append(f"~ hardware.display.topology = {act.get('topology', '').capitalize()}")
         if diff.get("dotfiles", {}).get("powershell_profile"):
             lines.append("~ dotfiles.powershell_profile updated")
         if diff.get("dotfiles", {}).get("terminal_theme"):
@@ -209,6 +211,11 @@ class ExecutionEngine:
                 idx = act.get("index", 1)
                 _step(f"[Display] Setting primary monitor to Display {idx}...",
                       lambda m=idx: set_primary_monitor(m))
+            elif act.get("type") == "set_display_topology":
+                from keraunos.display import set_display_topology
+                top = act.get("topology", "clone")
+                _step(f"[Display] Setting display topology to {top}...",
+                      lambda t=top: set_display_topology(t))
 
         # 1. WinGet installs
         for pkg_id in diff["winget_add"]:
