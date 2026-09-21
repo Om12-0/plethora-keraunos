@@ -35,7 +35,9 @@ Name: "startupicon"; Description: "Run Plethora Keraunos at Windows startup (GUI
 
 [Files]
 Source: "..\dist\keraunos\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\models\smollm2-135m-instruct-q4_k_m.gguf"; DestDir: "{app}\models"; Flags: ignoreversion
+Source: "..\assets\*"; DestDir: "{app}\assets"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\models\*"; DestDir: "{app}\models"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\keraunosICON.png"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "ui"; IconFilename: "{app}\{#MyAppExeName}"
